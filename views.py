@@ -197,6 +197,11 @@ def _render_list(block_lines, lm):
         elif grouped:
             grouped[-1][1].append(" " * (it["ind"] - base) + it["marker"] + " " + " ".join(l for l in it["lines"] if l.strip()))
     ordered = bool(re.match(r"\d", str(grouped[0][0]["marker"])))
+    TASKHEAD = re.compile(r"^\[[ xX]\]\s")
+    def is_task(it):
+        first = next((l.strip() for l in it["lines"] if l.strip()), "")
+        return bool(TASKHEAD.match(first))
+    has_task = any(is_task(it) for it, _ in grouped)
     html_items = []
     for it, kid_lines in grouped:
         own = []
@@ -227,14 +232,16 @@ def _render_list(block_lines, lm):
                 inner += inline(sg.replace("\n", " "), lm)
         if kid_lines:
             inner += _render_list(_dedent_child(kid_lines), lm)
-        html_items.append("<li>" + inner + "</li>")
-    tag = "ol" if ordered else "ul"
+        cls = ' class="task"' if is_task(it) else ""
+        html_items.append("<li%s>%s</li>" % (cls, inner))
+    name = "ol" if ordered else "ul"
+    attrs = ' class="task-list"' if has_task else ""
     start = ""
     if ordered:
         fm = re.match(r"(\d+)", str(grouped[0][0]["marker"]))
         if fm and fm.group(1) != "1":
             start = ' start="%s"' % fm.group(1)
-    return "<%s%s>%s</%s>" % (tag, start, "".join(html_items), tag)
+    return "<%s%s%s>%s</%s>" % (name, attrs, start, "".join(html_items), name)
 
 
 def _bare(url, keep):
@@ -284,8 +291,8 @@ def inline(s: str, link_map=None) -> str:
     s = re.sub(r"(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])", lambda m: keep("<em>" + m.group(1) + "</em>"), s)
     s = re.sub(r"(?<![\w_])_(?=\S)(.+?)(?<=\S)_(?![\w_])", lambda m: keep("<em>" + m.group(1) + "</em>"), s)
     s = re.sub(r"~~(?=\S)(.+?)(?<=\S)~~", lambda m: keep("<del>" + m.group(1) + "</del>"), s)
-    s = re.sub(r"\[([ xX])\]", lambda m: keep('<span class="box%s">&#x261%s</span>' %
-               ((" done" if m.group(1) != " " else ""), "1;" if m.group(1) != " " else "0;")), s)
+    s = re.sub(r"\[([ xX])\]", lambda m: keep('<span class="box%s"></span>' %
+               (" done" if m.group(1) != " " else "")), s)
     s = s.replace("\x01", "<br>")
     return re.sub(r"\x00(\d+)\x00", lambda m: toks[int(m.group(1))], s)
 
@@ -312,7 +319,7 @@ ul,ol{padding-left:1.4em}li{margin:.15em 0}li>p{margin:.3em 0}img{max-width:100%
 .res{margin:1.1em 0}.res .path{color:var(--dim);font-size:12px}
 .muted{color:var(--dim)}
 table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--chip);color:var(--fg)}.tscroll{overflow-x:auto}
-.box{font-size:1.05em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
+.task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px;pointer-events:none}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
 """

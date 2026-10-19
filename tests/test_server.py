@@ -251,7 +251,9 @@ def main():
         # task checkboxes + strikethrough render as glyphs, not raw [ ] / ~~
         req("POST", "/page", {"path": "queries/tasks", "content": page("tasks", "Tasks", "- [ ] todo item here\n- [x] done item here\n- ~~struck~~ text\n", ["alpha", "beta"], typ="query")})
         s, b, ct, cc = get_html("/view?path=queries/tasks.md")
-        check("checkbox + strikethrough rendered", "&#x2610;" in b and "&#x2611;" in b and "<del>struck</del>" in b
+        # task checkboxes + strikethrough render as boxes, not raw [ ] / ~~
+        check("checkbox + strikethrough rendered", '<li class="task"><span class="box"></span>' in b
+              and '<li class="task"><span class="box done"></span>' in b and "<del>struck</del>" in b
               and "[ ]" not in b and "~~" not in b, b[b.find("todo item")-120:b.find("todo item")+40] if "todo item" in b else b[:150])
         # markdown tables render as real <table> (notes use them heavily)
         tbl = "Capable:\n\n| Tool | Status |\n|---|---|\n| `wvg` | **alive** |\n| pywidevine | dead |\n\nSee [[alpha]]."
