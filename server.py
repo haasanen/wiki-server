@@ -237,6 +237,8 @@ def update_index(rel: str, text: str, *, remove: bool = False) -> None:
     """Add or refresh the page's line in index.md (or remove it). Locked: the index is the one
     shared file, so every index edit runs under its lock."""
     with pathlock("index.md"):
+        if rel in SPECIAL:
+            return          # index.md / log.md / SCHEMA.md don't get an index line of their own
         idx = WIKI / "index.md"
         try:
             cur = read_text(idx)

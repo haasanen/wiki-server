@@ -213,6 +213,11 @@ def main():
         [t.start() for t in ts]
         [t.join() for t in ts]
         check("same-page race: one 200 one 409", sorted(results) == [200, 409], str(results))
+        # special pages are writable directly (v0.2.0 regression: index.md update 500'd on a missing index line)
+        r2 = get("/page?path=index.md")
+        s2, b2, h2 = (r2 if len(r2) == 3 else (r2[0], "", {}))
+        s3, b3 = req("POST", "/page", {"path": "index.md", "content": b2 + "\n- [[q0]] — test line\n", "note": "t: direct index edit", "base": h2.get("X-Content-Sha256")})
+        check("direct index.md edit 200", s2 == 200 and s3 == 200, f"{s2} {s3} {str(b3)[:120]}")
 
         print("== unknown routes / methods")
         check("unknown GET 404", get("/nope")[0] == 404)
