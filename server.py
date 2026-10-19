@@ -43,9 +43,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-VERSION = "0.2.2"
+VERSION = "0.3.0"
 WIKI = Path(os.environ.get("WIKI_DIR", "/wiki"))
 PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")      # graph node dirs
+try:
+    import views as V
+except ImportError:
+    V = None
+
 SPECIAL = ("SCHEMA.md", "index.md", "log.md")
 TYPES = {"entities": "entity", "concepts": "concept", "comparisons": "comparison", "queries": "query"}
 SECTION = {"entities": "Entities", "concepts": "Concepts", "comparisons": "Comparisons", "queries": "Queries"}
@@ -328,6 +333,7 @@ def lint() -> dict:
 
 HELP = """wiki-server __VERSION__ — a Karpathy-pattern knowledge wiki over HTTP (no auth, LAN-internal)
 
+  GET  /  /view?path=             human HTML UI (also: Accept: text/html on most GETs)
   GET  /health                    liveness + page count
   GET  /index | /schema           entry point / the conventions you must follow (add format=json to wrap)
   GET  /log?tail=30               recent history of the wiki
@@ -362,11 +368,24 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def wants_html(self, q):
+        if q.get("html"):
+            return True
+        if V is None:
+            return False
+        accept = self.headers.get("Accept", "")
+        return "text/html" in accept and "application/json" not in accept
+
     # ---- GET
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         try:
+            html = self.wants_html(q)
+            if u.path == "/" and V is not None:
+                return self._send(200, V.page_home(sys.modules[__name__]), "text/html")
+            if u.path == "/view" and V is not None:
+                return self._send(200, V.page_view(sys.modules[__name__], q), "text/html")
             if u.path == "/health":
                 return self._send(200, {"status": "ok", "pages": len(ok_pages()), "service": "wiki", "version": VERSION})
             if u.path == "/help":
@@ -377,6 +396,8 @@ class H(BaseHTTPRequestHandler):
                     return self._send(404, {"error": f"no {u.path.strip('/').lower()}"})
                 if q.get("format", [""])[0] == "json":
                     return self._send(200, {"content": read_text(f)})
+                if html and V is not None:
+                    return self._send(200, V.page_md(sys.modules[__name__], read_text(f), u.path.strip("/").title()), "text/html")
                 return self._send(200, read_text(f), "text/markdown")
             if u.path == "/log":
                 f = WIKI / "log.md"
@@ -387,6 +408,8 @@ class H(BaseHTTPRequestHandler):
                 if tail.isdigit():
                     parts = re.split(r"(?m)(?=^## )", text)
                     text = "".join(parts[:1] + parts[-int(tail):])
+                if html and V is not None:
+                    return self._send(200, V.page_md(sys.modules[__name__], text, "log"), "text/html")
                 return self._send(200, text, "text/markdown")
             if u.path == "/search":
                 if not q.get("q"):
@@ -395,10 +418,18 @@ class H(BaseHTTPRequestHandler):
                     lim = int(q.get("limit", ["10"])[0] or 10)
                 except ValueError:
                     lim = 10
-                return self._send(200, search(q["q"][0], limit=max(1, min(lim, 100))))
+                res = search(q["q"][0], limit=max(1, min(lim, 100)))
+                if html and V is not None:
+                    return self._send(200, V.page_search(sys.modules[__name__], q), "text/html")
+                return self._send(200, res)
             if u.path == "/graph":
-                return self._send(200, graph())
+                g = graph()
+                if html and V is not None:
+                    return self._send(200, V.page_graph(sys.modules[__name__], g), "text/html")
+                return self._send(200, g)
             if u.path == "/lint":
+                if html and V is not None:
+                    return self._send(200, V.page_lint(sys.modules[__name__], lint()), "text/html")
                 return self._send(200, lint())
             if u.path in ("/page", "/neighbors"):
                 rel = q.get("path", [""])[0]

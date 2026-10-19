@@ -6,8 +6,17 @@ One file, Python stdlib only, no database: the graph **is** the files. Writes ar
 
 ## API
 
+The same routes serve **two faces**: agents get JSON/markdown by default; browsers get
+styled HTML (dark GitHub-like pages: home + search box, rendered pages with resolved
+wikilinks, tag chips, out/backlinks panels, a clickable force-directed SVG graph, search
+with snippets, lint as a page). Decision per request: `Accept: text/html` or `?html=1`
+=> HTML, everything else => raw. Point a browser at `/` and just read — no Obsidian, no
+sync, works on phones.
+
 | Route | What it gives a client |
 |---|---|
+| `GET /` | human home (index + search); JSON clients keep using `/index` |
+| `GET /view?path=...` | human page view (wikilinks clickable, backlinks panel) |
 | `GET /health` | liveness + page count |
 | `GET /help` | the route table, as text (self-documenting — point new agents here) |
 | `GET /index`, `GET /schema` | entry point / the conventions every writer must follow (`?format=json` wraps) |
@@ -45,7 +54,7 @@ Env: `WIKI_DIR` (default `/wiki`), `WIKI_PORT` (default `8000`).
 
 ## Tests
 
-`python3 tests/test_server.py` — 53 end-to-end checks against a live server: every route,
+`python3 tests/test_server.py` — 63 end-to-end checks (incl. HTML face: every human route returns rendered HTML for browsers and stays raw for agents) against a live server: every route,
 create/update/delete with index + log maintenance, optimistic locking (200/409 races), path
 traversal guards, schema warnings, short-name link resolution with broken edges kept visible,
 backlinks, lint, and concurrency (8 writers on different pages + the shared index, same-page

@@ -224,6 +224,31 @@ def main():
             w = None
         check("special-page edit has no frontmatter warnings", not w, str(w))
 
+        print("== human HTML views")
+        def get_html(path):
+            rq = urllib.request.Request(BASE + path, headers={"Accept": "text/html,*/*"})
+            try:
+                r = urllib.request.urlopen(rq, timeout=10)
+                return r.status, r.read().decode(), r.headers.get("Content-Type", "")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode(), ""
+        s, b, ct = get_html("/")
+        check("home HTML 200", s == 200 and "text/html" in ct, str((s, ct)))
+        check("home shows index links", 'href="/view?path=' in b, b[:200])
+        s, b, ct = get_html("/view?path=queries/q0.md")
+        check("page view 200 + wikilinks resolved", s == 200 and 'href="/view?path=entities/alpha.md"' in b, b[:200])
+        s, b, ct = get_html("/search?q=alpha")
+        check("search HTML 200", s == 200 and "result" in b, str(s))
+        s, b, ct = get_html("/graph")
+        check("graph SVG 200", s == 200 and "<svg" in b, str(s))
+        s, b, ct = get_html("/lint")
+        check("lint HTML 200", s == 200 and "lint" in b, str(s))
+        s, b, ct = get_html("/index")
+        check("index HTML 200", s == 200 and "text/html" in ct, str((s, ct)))
+        # agents still get JSON by default
+        s, b, h = get("/graph")
+        check("graph still JSON for plain GET", s == 200 and isinstance(b, dict) and "nodes" in b, str(s))
+
         print("== unknown routes / methods")
         check("unknown GET 404", get("/nope")[0] == 404)
         check("unknown POST 404", req("POST", "/nope", {"a": 1})[0] == 404)
