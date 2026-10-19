@@ -173,6 +173,7 @@ def main():
         check("409 on stale base", s == 409 and "changed since" in b.get("error", ""), str(b))
         check("winner content intact", "Writer A got there first." in (wiki / "concepts" / "gamma.md").read_text())
 
+
         print("== DELETE")
         s, b = req("DELETE", "/page?path=concepts/thin.md&note=test+cleanup")
         check("delete", s == 200 and not (wiki / "concepts" / "thin.md").exists(), str(b))
@@ -183,6 +184,15 @@ def main():
         print("== lint")
         s, b, _ = get("/lint")
         check("lint shape", s == 200 and b["pages"] == 3, str(b)[:200])
+        # index summaries: no mid-link truncation, no raw **, no self-title doubling (v0.3.0 mobile render bug)
+        long_body = ("x " * 200) + " ends here. tail [[alpha]] never in first 160 chars at all " * 3
+        s, bg = req("POST", "/page", {"path": "queries/longpage", "content": page("longpage", "Longpage", "**Bold bit** " + long_body, ["alpha", "beta"], typ="query")})
+        idxl = (wiki / "index.md").read_text()
+        line = [l for l in idxl.splitlines() if "[[longpage]]" in l][0]
+        check("index line: word boundary + no half-link + no **",
+              line.count("[[") == line.count("]]") and "**" not in line
+              and line == line.rstrip(" ,;:)-(") and "Longpage: Longpage" not in line, line[-60:])
+        check("index line bounded", len(line) <= 220, str(len(line)))
         check("lint broken edge", any(e["link"] == "missing" for e in b["broken_edges"]), str(b["broken_edges"]))
         check("lint thin outlinks", any("gamma" in p for p in b["thin_outlinks"]) is False, str(b["thin_outlinks"]))  # gamma links 2
 

@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 WIKI = Path(os.environ.get("WIKI_DIR", "/wiki"))
 PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")      # graph node dirs
 try:
@@ -234,8 +234,18 @@ def index_line_for(rel: str, text: str) -> str:
     stem = Path(rel).stem                       # index uses short names: [[strata]], matching the wiki convention
     title = title_of(text, Path(rel).stem)
     body = re.sub(r"(?m)^#.*$", "", body_of(text)).strip()
-    first = re.split(r"(?<!\w)[.!?]\s|\n\s*\n", body.replace("\n", " ").strip(), maxsplit=1)[0][:160]
-    return f"- [[{stem}]] — {title}: {first}"
+    first = re.split(r"(?<!\w)[.!?]\s|\n\s*\n", body.replace("\n", " ").strip(), maxsplit=1)[0]
+    if first.lower().startswith(title.lower()):          # pages that repeat their own title: don't double it
+        first = first[len(title):].lstrip(" :.\u2014-")
+    first = first.replace("**", "")                      # index lines are one-liners: bold there renders raw
+    if len(first) > 160:
+        cut = first[:160]
+        if " " in cut:                                   # word boundary, never mid-link or mid-word
+            cut = cut[:cut.rfind(" ")]
+        first = cut.rstrip(" ,;:)-(" + chr(8212) + "\u2014[")
+        if first.count("[[") > first.count("]]"):        # never leave a half [[link]]
+            first = first[:first.rfind("[[")].rstrip(" ,;:)-(" + chr(8212) + " [")
+    return f"- [[{stem}]] — {first}" if first else f"- [[{stem}]] — {title}"
 
 
 def update_index(rel: str, text: str, *, remove: bool = False) -> None:
