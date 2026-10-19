@@ -113,6 +113,9 @@ def inline(s: str, link_map=None) -> str:
     s = re.sub(r"`([^`]+)`", lambda m: f"<code>{esc(m.group(1))}</code>", s)
     s = re.sub(r"\*\*([^*]+)\*\*", lambda m: f"<strong>{esc(m.group(1))}</strong>", s)
     s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", lambda m: f"<em>{esc(m.group(1))}</em>", s)
+    s = re.sub(r"~~([^~]+)~~", lambda m: f"<del>{esc(m.group(1))}</del>", s)
+    s = re.sub(r"\[([ xX])\]", lambda m: (
+        '<span class="box done">&#x2611;</span>' if m.group(1) != " " else '<span class="box">&#x2610;</span>'), s)
     s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
                lambda m: f'<a href="{H.escape(m.group(2))}">{esc(m.group(1))}</a>', s)
     return s
@@ -138,7 +141,8 @@ ul{padding-left:1.3em}li{margin:.15em 0}hr{border:none;border-top:1px solid var(
 .side a{display:inline-block;margin:2px 8px 2px 0;font-size:13px}
 .snip{color:var(--dim);font-size:13px;margin:.3em 0 0}
 .res{margin:1.1em 0}.res .path{color:var(--dim);font-size:12px}
-.muted{color:var(--dim)}svg{max-width:100%}
+.muted{color:var(--dim)}
+.box{font-size:1.05em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px;pointer-events:none}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
 """

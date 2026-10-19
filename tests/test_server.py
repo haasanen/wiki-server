@@ -247,6 +247,11 @@ def main():
         check("home shows index links", 'href="/view?path=' in b, b[:200])
         s, b, ct = get_html("/view?path=queries/q0.md")
         check("page view 200 + wikilinks resolved", s == 200 and 'href="/view?path=entities/alpha.md"' in b, b[:200])
+        # task checkboxes + strikethrough render as glyphs, not raw [ ] / ~~
+        req("POST", "/page", {"path": "queries/tasks", "content": page("tasks", "Tasks", "- [ ] todo item here\n- [x] done item here\n- ~~struck~~ text\n", ["alpha", "beta"], typ="query")})
+        s, b, ct = get_html("/view?path=queries/tasks.md")
+        check("checkbox + strikethrough rendered", "&#x2610;" in b and "&#x2611;" in b and "<del>struck</del>" in b
+              and "[ ]" not in b and "~~" not in b, b[b.find("todo item")-120:b.find("todo item")+40] if "todo item" in b else b[:150])
         s, b, ct = get_html("/search?q=alpha")
         check("search HTML 200", s == 200 and "result" in b, str(s))
         s, b, ct = get_html("/graph")
