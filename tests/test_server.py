@@ -253,6 +253,11 @@ def main():
         s, b, ct, cc = get_html("/view?path=queries/tasks.md")
         check("checkbox + strikethrough rendered", "&#x2610;" in b and "&#x2611;" in b and "<del>struck</del>" in b
               and "[ ]" not in b and "~~" not in b, b[b.find("todo item")-120:b.find("todo item")+40] if "todo item" in b else b[:150])
+        # markdown tables render as real <table> (notes use them heavily)
+        tbl = "Capable:\n\n| Tool | Status |\n|---|---|\n| `wvg` | **alive** |\n| pywidevine | dead |\n\nSee [[alpha]]."
+        req("POST", "/page", {"path": "queries/tablepage", "content": page("tablepage", "Tablepage", tbl, ["alpha", "beta"], typ="query")})
+        s2t, b2t, ct2t, cc2t = get_html("/view?path=queries/tablepage.md")
+        check("table renders", "<table>" in b2t and b2t.count("<tr>") >= 3 and "<th>Tool</th>" in b2t and "<strong>alive</strong>" in b2t, b2t[b2t.find("<table"):b2t.find("<table")+120])
         s, b, ct, cc = get_html("/search?q=alpha")
         check("search HTML 200", s == 200 and "result" in b, str(s))
         s, b, ct, cc = get_html("/graph")

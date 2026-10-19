@@ -62,6 +62,25 @@ def md_to_html(text: str, link_map=None) -> str:
             out.append(f"<h{lvl}>{inline(m.group(2), link_map)}</h{lvl}>")
             i += 1
             continue
+        if s.startswith("|") and s.count("|") >= 2 and i + 1 < len(lines) and re.match(r"^\s*\|?[\s:|-]+\|?\s*$", lines[i + 1]) and "-" in lines[i + 1]:
+            flush_para()
+            header = [c.strip() for c in s.strip("|").split("|")]
+            i += 2
+            rows = []
+            while i < len(lines):
+                t = lines[i].strip()
+                if t.startswith("|") and t.count("|") >= 2:
+                    rows.append([c.strip() for c in t.strip("|").split("|")])
+                    i += 1
+                else:
+                    break
+            th = "".join(f"<th>{inline(c, link_map)}</th>" for c in header)
+            tb = "".join("<tr>" + "".join(f"<td>{inline(c, link_map)}</td>" for c in r) + "</tr>" for r in rows)
+            out.append(f'<div class="tscroll"><table><thead><tr>{th}</tr></thead><tbody>{tb}</tbody></table></div>')
+            continue
+        if s.startswith("|") and s.count("|") >= 2:
+            # data row without a leading header (orphan) -> render as plain text to avoid swallowing
+            pass
         if s in ("---", "***"):
             flush_para()
             out.append("<hr>")
@@ -142,6 +161,7 @@ ul{padding-left:1.3em}li{margin:.15em 0}hr{border:none;border-top:1px solid var(
 .snip{color:var(--dim);font-size:13px;margin:.3em 0 0}
 .res{margin:1.1em 0}.res .path{color:var(--dim);font-size:12px}
 .muted{color:var(--dim)}
+table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--chip);color:var(--fg)}.tscroll{overflow-x:auto}
 .box{font-size:1.05em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px;pointer-events:none}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
