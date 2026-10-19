@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-VERSION = "0.2.0"
+VERSION = "0.2.2"
 WIKI = Path(os.environ.get("WIKI_DIR", "/wiki"))
 PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")      # graph node dirs
 SPECIAL = ("SCHEMA.md", "index.md", "log.md")
@@ -280,6 +280,8 @@ def append_log(entry: str) -> None:
 def validate_content(rel: str, content: str) -> list[str]:
     """Warnings (not refusals) about a page's content: the schema's teeth, served to writers."""
     warn = []
+    if rel in SPECIAL:
+        return warn          # index/log/SCHEMA have their own shapes; frontmatter rules don't apply
     fm = frontmatter(content)
     if not fm:
         warn.append("no YAML frontmatter (SCHEMA.md requires title/created/updated/type/tags)")

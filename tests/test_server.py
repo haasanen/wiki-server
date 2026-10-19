@@ -218,6 +218,11 @@ def main():
         s2, b2, h2 = (r2 if len(r2) == 3 else (r2[0], "", {}))
         s3, b3 = req("POST", "/page", {"path": "index.md", "content": b2 + "\n- [[q0]] — test line\n", "note": "t: direct index edit", "base": h2.get("X-Content-Sha256")})
         check("direct index.md edit 200", s2 == 200 and s3 == 200, f"{s2} {s3} {str(b3)[:120]}")
+        try:
+            w = json.loads(b3).get("warnings") if isinstance(b3, str) else b3.get("warnings")
+        except Exception:
+            w = None
+        check("special-page edit has no frontmatter warnings", not w, str(w))
 
         print("== unknown routes / methods")
         check("unknown GET 404", get("/nope")[0] == 404)
