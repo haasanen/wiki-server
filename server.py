@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 WIKI = Path(os.environ.get("WIKI_DIR", "/wiki"))
 PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")      # graph node dirs
 try:
@@ -372,6 +372,10 @@ class H(BaseHTTPRequestHandler):
         data = body.encode() if isinstance(body, str) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype + "; charset=utf-8")
+        if ctype == "text/html":
+            # the .md files are the ground truth; HTML is rendered on demand, so browsers
+            # must revalidate rather than trust heuristic caching (no stale views)
+            self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(data)))
         for k, v in (extra_headers or {}).items():
             self.send_header(k, v)

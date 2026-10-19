@@ -239,26 +239,27 @@ def main():
             rq = urllib.request.Request(BASE + path, headers={"Accept": "text/html,*/*"})
             try:
                 r = urllib.request.urlopen(rq, timeout=10)
-                return r.status, r.read().decode(), r.headers.get("Content-Type", "")
+                return r.status, r.read().decode(), r.headers.get("Content-Type", ""), r.headers.get("Cache-Control", "")
             except urllib.error.HTTPError as e:
-                return e.code, e.read().decode(), ""
-        s, b, ct = get_html("/")
+                return e.code, e.read().decode(), "", ""
+        s, b, ct, cc = get_html("/")
         check("home HTML 200", s == 200 and "text/html" in ct, str((s, ct)))
+        check("HTML sends Cache-Control: no-cache (md files are ground truth)", cc == "no-cache", repr(cc))
         check("home shows index links", 'href="/view?path=' in b, b[:200])
-        s, b, ct = get_html("/view?path=queries/q0.md")
+        s, b, ct, cc = get_html("/view?path=queries/q0.md")
         check("page view 200 + wikilinks resolved", s == 200 and 'href="/view?path=entities/alpha.md"' in b, b[:200])
         # task checkboxes + strikethrough render as glyphs, not raw [ ] / ~~
         req("POST", "/page", {"path": "queries/tasks", "content": page("tasks", "Tasks", "- [ ] todo item here\n- [x] done item here\n- ~~struck~~ text\n", ["alpha", "beta"], typ="query")})
-        s, b, ct = get_html("/view?path=queries/tasks.md")
+        s, b, ct, cc = get_html("/view?path=queries/tasks.md")
         check("checkbox + strikethrough rendered", "&#x2610;" in b and "&#x2611;" in b and "<del>struck</del>" in b
               and "[ ]" not in b and "~~" not in b, b[b.find("todo item")-120:b.find("todo item")+40] if "todo item" in b else b[:150])
-        s, b, ct = get_html("/search?q=alpha")
+        s, b, ct, cc = get_html("/search?q=alpha")
         check("search HTML 200", s == 200 and "result" in b, str(s))
-        s, b, ct = get_html("/graph")
+        s, b, ct, cc = get_html("/graph")
         check("graph SVG 200", s == 200 and "<svg" in b, str(s))
-        s, b, ct = get_html("/lint")
+        s, b, ct, cc = get_html("/lint")
         check("lint HTML 200", s == 200 and "lint" in b, str(s))
-        s, b, ct = get_html("/index")
+        s, b, ct, cc = get_html("/index")
         check("index HTML 200", s == 200 and "text/html" in ct, str((s, ct)))
         # agents still get JSON by default
         s, b, h = get("/graph")
