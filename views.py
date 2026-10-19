@@ -23,121 +23,271 @@ def esc(s):
     return H.escape(str(s), quote=True)
 
 
-# ---------- markdown -> html (small, opinionated: enough for wiki pages) ----
+# ---------- markdown -> html (complete coverage: CommonMark subset + wikilinks) ----
+# Supported: ATX + setext headings, ordered/unordered/nested lists (loose+tight,
+# start=), fenced code with language, tables with alignment, blockquotes (nested),
+# thematic breaks (--- *** ___), images (lazy-load), markdown links (with title),
+# wikilinks (resolved against the live page map; dead ones red), autolinks <url>,
+# bare-URL linking, ***bold-italic***, **bold**, __bold__, *em*, _em_, ~~strike~~,
+# task checkboxes, inline code (multi-backtick), hard breaks (two-space),
+# backslash escapes, <details>/<summary>/<img> passthrough.
+
+ATX = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+HR = re.compile(r"^([-*_])( *\1){2,} *$")
+LISTITEM = re.compile(r"^(\s*)([-*+]|\d+[.)])(\s+)(.*)$")
+
 
 def md_to_html(text: str, link_map=None) -> str:
-    lines = text.splitlines()
-    out, i, in_code, para = [], 0, False, []
+    text = re.sub(r"(?s)\A---.*?---\s*", "", text)      # strip frontmatter
+    return _blocks(text.splitlines(), link_map)
 
-    def flush_para():
+
+def _blocks(lines, lm):
+    out, i, para = [], 0, []
+
+    def flush():
+        nonlocal para
         if para:
-            out.append("<p>" + inline(" ".join(para), link_map) + "</p>")
-            para.clear()
+            html = ""
+            for seg in para:
+                if seg.endswith("\x01"):
+                    html += inline(seg[:-1], lm) + "<br>"
+                else:
+                    if html and not html.endswith("<br>"):
+                        html += " "
+                    html += inline(seg, lm)
+            out.append("<p>" + html + "</p>")
+            para = []
 
-    while i < len(lines):
+    n = len(lines)
+    while i < n:
         ln = lines[i]
-        if ln.strip().startswith("```"):
-            flush_para()
-            if not in_code:
-                out.append("<pre><code>")
-                in_code = True
-            else:
-                out.append("</code></pre>")
-                in_code = False
-            i += 1
-            continue
-        if in_code:
-            out.append(esc(ln) + "\n")
-            i += 1
-            continue
         s = ln.strip()
-        if not s:
-            flush_para()
+        # fenced code (``` or ~~~), optional language, unclosed runs to EOF
+        if s.startswith("```") or s.startswith("~~~"):
+            flush()
+            fence = s[:3]
+            lang = s[3:].strip()
+            buf = []
             i += 1
+            while i < n and not lines[i].strip().startswith(fence):
+                buf.append(esc(lines[i]) + "\n")
+                i += 1
+            i += 1
+            cls = ' class="lang-' + esc(lang) + '"' if lang else ""
+            out.append("<pre><code%s>%s</code></pre>" % (cls, "".join(buf)))
             continue
-        m = re.match(r"^(#{1,6})\s+(.*)$", s)
+        # setext heading: previous paragraph + ==== / ---- underline
+        if para and re.match(r"^=+ *$", s):
+            txt = " ".join(para); para = []
+            out.append("<h1>" + inline(txt, lm) + "</h1>"); i += 1; continue
+        if para and set(s) == {"-"}:      # any run of dashes under a para = setext h2
+            txt = " ".join(para); para = []
+            out.append("<h2>" + inline(txt, lm) + "</h2>"); i += 1; continue
+        m = ATX.match(s)
         if m:
-            flush_para()
+            flush()
             lvl = len(m.group(1))
-            out.append(f"<h{lvl}>{inline(m.group(2), link_map)}</h{lvl}>")
+            out.append("<h%d>%s</h%d>" % (lvl, inline(m.group(2), lm), lvl))
             i += 1
             continue
-        if s.startswith("|") and s.count("|") >= 2 and i + 1 < len(lines) and re.match(r"^\s*\|?[\s:|-]+\|?\s*$", lines[i + 1]) and "-" in lines[i + 1]:
-            flush_para()
-            header = [c.strip() for c in s.strip("|").split("|")]
+        if HR.match(s):
+            flush(); out.append("<hr>"); i += 1; continue
+        if s.startswith(">"):
+            flush()
+            buf = []
+            while i < n and lines[i].strip().startswith(">"):
+                buf.append(re.sub(r"^\s*>\s?", "", lines[i]))
+                i += 1
+            out.append("<blockquote>" + _blocks(buf, lm) + "</blockquote>")
+            continue
+        # table: header row + |---| separator (with optional :align:), body rows
+        if s.startswith("|") and s.count("|") >= 2 and i + 1 < n and "-" in lines[i + 1] \
+                and re.match(r"^\s*\|?[\s:|-]+\|?\s*$", lines[i + 1]):
+            flush()
+            header = [c.strip() for c in s.strip().strip("|").split("|")]
+            aligns = [c.strip() for c in lines[i + 1].strip().strip("|").split("|")]
+
+            def a(col, aligns=aligns):
+                c2 = aligns[col] if col < len(aligns) else ""
+                if c2.startswith(":") and c2.endswith(":"):
+                    return ' style="text-align:center"'
+                if c2.endswith(":"):
+                    return ' style="text-align:right"'
+                return ""
             i += 2
             rows = []
-            while i < len(lines):
-                t = lines[i].strip()
-                if t.startswith("|") and t.count("|") >= 2:
-                    rows.append([c.strip() for c in t.strip("|").split("|")])
-                    i += 1
+            while i < n and lines[i].strip().startswith("|") and lines[i].count("|") >= 2:
+                rows.append([c.strip() for c in lines[i].strip().strip("|").split("|")])
+                i += 1
+            th = "".join("<th%s>%s</th>" % (a(c), inline(c2, lm)) for c, c2 in enumerate(header))
+            tb = "".join("<tr>" + "".join("<td%s>%s</td>" % (a(ci), inline(c2, lm)) for ci, c2 in enumerate(r)) + "</tr>" for r in rows)
+            out.append('<div class="tscroll"><table><thead><tr>' + th + "</tr></thead><tbody>" + tb + "</tbody></table></div>")
+            continue
+        # list block: gather contiguous items + their continuation lines
+        if LISTITEM.match(ln):
+            flush()
+            fam0 = "num" if re.match(r"^\s*\d", ln) else "bullet"
+
+            def fam(l):
+                return "num" if re.match(r"^\s*\d", l) else "bullet"
+            block = []
+            while i < n:
+                mm = LISTITEM.match(lines[i])
+                if mm:
+                    if block and not lines[i].startswith("  ") and fam(lines[i]) != fam0:
+                        break                              # list family change = new list
+                    block.append(lines[i]); i += 1
+                elif lines[i].strip() == "" and i + 1 < n and (
+                        (LISTITEM.match(lines[i + 1]) and fam(lines[i + 1]) == fam0)
+                        or lines[i + 1].startswith("  ")):
+                    block.append(""); i += 1          # loose item / nested follows
+                elif lines[i].startswith("  ") and block:
+                    block.append(lines[i]); i += 1    # continuation (wrap or child)
                 else:
                     break
-            th = "".join(f"<th>{inline(c, link_map)}</th>" for c in header)
-            tb = "".join("<tr>" + "".join(f"<td>{inline(c, link_map)}</td>" for c in r) + "</tr>" for r in rows)
-            out.append(f'<div class="tscroll"><table><thead><tr>{th}</tr></thead><tbody>{tb}</tbody></table></div>')
+            out.append(_render_list(block, lm))
             continue
-        if s.startswith("|") and s.count("|") >= 2:
-            # data row without a leading header (orphan) -> render as plain text to avoid swallowing
-            pass
-        if s in ("---", "***"):
-            flush_para()
-            out.append("<hr>")
-            i += 1
-            continue
-        if s.startswith("<details") or s.startswith("</details") or s.startswith("<summary"):
-            flush_para()
-            out.append(esc(s).replace("&lt;", "<").replace("&gt;", ">"))
-            i += 1
-            continue
-        if s.startswith("> "):
-            flush_para()
-            out.append("<blockquote>" + inline(s[2:], link_map) + "</blockquote>")
-            i += 1
-            continue
-        if s.startswith("- ") or s.startswith("* "):
-            flush_para()
-            items = []
-            while i < len(lines):
-                t = lines[i].strip()
-                if t.startswith(("- ", "* ")):
-                    items.append(inline(t[2:], link_map))
-                    i += 1
-                elif lines[i].startswith(("    ", "\t")) and items:
-                    items[-1] += " " + inline(t, link_map)   # wrapped continuation
-                    i += 1
-                else:
-                    break
-            out.append("<ul>" + "".join(f"<li>{x}</li>" for x in items) + "</ul>")
-            continue
-        para.append(s)
+        if s.startswith("<details") or s.startswith("</details") or s.startswith("<summary") \
+                or s.startswith("</summary") or s.startswith("<img"):
+            flush(); out.append(s); i += 1; continue
+        if not s:
+            flush(); i += 1; continue
+        # paragraph line; trailing two spaces = hard break marker
+        para.append(s + ("\x01" if ln.endswith("  ") else ""))
         i += 1
-    flush_para()
-    if in_code:
-        out.append("</code></pre>")
+    flush()
     return "\n".join(out)
 
 
+def _dedent_child(lines):
+    """strip common leading indent so nested child lines re-parse."""
+    widths = [len(l) - len(l.lstrip()) for l in lines if l.strip()]
+    d = min(widths) if widths else 0
+    return [l[d:] if len(l) >= d else l for l in lines]
+
+
+def _render_list(block_lines, lm):
+    # parse into items: (indent, marker, [content lines incl. raw child lines])
+    items = []
+    cur = None
+    loose = False
+    for ln in block_lines:
+        mm = LISTITEM.match(ln)
+        if mm:
+            if cur:
+                items.append(cur)
+            cur = {"ind": len(mm.group(1)), "marker": mm.group(2), "lines": [mm.group(4)]}
+        elif cur is not None:
+            if ln.strip() == "":
+                loose = True
+                cur["lines"].append("")
+            else:
+                cur["lines"].append(ln)
+    if cur:
+        items.append(cur)
+    if not items:
+        return ""
+    base = min(it["ind"] for it in items)
+    block_loose = any(l.strip() == "" for l in block_lines)
+    grouped = []          # [(item, [child block lines])]
+    for it in items:
+        if it["ind"] == base:
+            grouped.append([it, []])
+        elif grouped:
+            grouped[-1][1].append(" " * (it["ind"] - base) + it["marker"] + " " + " ".join(l for l in it["lines"] if l.strip()))
+    ordered = bool(re.match(r"\d", str(grouped[0][0]["marker"])))
+    html_items = []
+    for it, kid_lines in grouped:
+        own = []
+        # child *continuation* lines (indented, not new sibling markers) belong to this item
+        for l in it["lines"]:
+            if l.strip() and (len(l) - len(l.lstrip())) >= it["ind"] + 2:
+                # could be child list or wrap; if it looks like a list marker, it's a child
+                if LISTITEM.match(l.strip()):
+                    kid_lines.append(l.strip())
+                else:
+                    own.append(l.strip())
+            elif l.strip() == "":
+                own.append("")
+            else:
+                own.append(l.strip())
+        joined = "\n".join(own).strip()
+        segs = [sg for sg in re.split(r"\n\s*\n", joined) if sg.strip()]
+        inner = ""
+        for sg in segs:
+            first = sg.splitlines()[0].strip()
+            if first.startswith(">"):
+                inner += _blocks([re.sub(r"^\s*>?\s?", ">", x.strip()) if not x.strip().startswith(">") else x for x in sg.splitlines()], lm)
+            elif LISTITEM.match(first) or ATX.match(first):
+                inner += _blocks(sg.splitlines(), lm)
+            elif len(segs) > 1 or block_loose:
+                inner += "<p>" + inline(sg.replace("\n", " "), lm) + "</p>"
+            else:
+                inner += inline(sg.replace("\n", " "), lm)
+        if kid_lines:
+            inner += _render_list(_dedent_child(kid_lines), lm)
+        html_items.append("<li>" + inner + "</li>")
+    tag = "ol" if ordered else "ul"
+    start = ""
+    if ordered:
+        fm = re.match(r"(\d+)", str(grouped[0][0]["marker"]))
+        if fm and fm.group(1) != "1":
+            start = ' start="%s"' % fm.group(1)
+    return "<%s%s>%s</%s>" % (tag, start, "".join(html_items), tag)
+
+
+def _bare(url, keep):
+    """bare-URL hit: link it, moving trailing punctuation out of the href/text."""
+    core = url.rstrip(".,;:!?)")
+    tail = url[len(core):]
+    return keep('<a href="%s">%s</a>%s' % (core, core, tail))
+
+
 def inline(s: str, link_map=None) -> str:
-    # wikilinks first (they may contain underscores/brackets)
+    """Inline pass with a stash so generated HTML is never re-matched by later rules."""
+    toks = []
+
+    def keep(fragment):
+        toks.append(fragment)
+        return "\x00%d\x00" % (len(toks) - 1)
+
+    s = esc(s)                                   # escape once, first; rules emit raw HTML
+    s = re.sub(r"\\\x60|\\" + r"[`*_{}\[\]()<>#+.!~|\-]", lambda m: keep(m.group(0)[1]), s)
+    s = re.sub(r"(`+)(.+?)\1", lambda m: keep("<code>" + m.group(2).strip() + "</code>"), s)
+
     def wl(m):
-        target, _anchor, label = m.group(1).strip(), m.group(2), m.group(3)
+        target, label = m.group(1).strip(), m.group(3)
         label = label or target.rsplit("/", 1)[-1]
         href = link_map.get(target) if link_map else None
         cls = ' class="dead"' if href is None and link_map is not None else ""
-        href = href or f"/view?q={urlquote(target)}"
-        return f'<a href="{H.escape(href)}"{cls}>{H.escape(label)}</a>'
+        href = href or "/view?q=" + urlquote(target)
+        return keep('<a href="%s"%s>%s</a>' % (H.escape(href, quote=True), cls, label))
     s = WIKILINK.sub(wl, s)
-    s = re.sub(r"`([^`]+)`", lambda m: f"<code>{esc(m.group(1))}</code>", s)
-    s = re.sub(r"\*\*([^*]+)\*\*", lambda m: f"<strong>{esc(m.group(1))}</strong>", s)
-    s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", lambda m: f"<em>{esc(m.group(1))}</em>", s)
-    s = re.sub(r"~~([^~]+)~~", lambda m: f"<del>{esc(m.group(1))}</del>", s)
-    s = re.sub(r"\[([ xX])\]", lambda m: (
-        '<span class="box done">&#x2611;</span>' if m.group(1) != " " else '<span class="box">&#x2610;</span>'), s)
-    s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
-               lambda m: f'<a href="{H.escape(m.group(2))}">{esc(m.group(1))}</a>', s)
-    return s
+
+    s = re.sub(r'!\[([^\]]*)\]\((\S+?)(?:\s+&quot;([^&]*)&quot;)?\)',
+               lambda m: keep('<img src="%s" alt="%s"%s loading="lazy">' %
+                              (m.group(2), m.group(1), (' title="%s"' % m.group(3)) if m.group(3) else "")), s)
+
+    def lnk(m):
+        t, url, title = m.group(1), m.group(2), m.group(3)
+        return keep('<a href="%s"%s>%s</a>' % (url, (' title="%s"' % title) if title else "", t))
+    s = re.sub(r'\[([^\]]+)\]\((https?://[^\)\s]+|/view[^\)\s]*)(?:\s+&quot;([^&]*)&quot;)?\)', lnk, s)
+
+    s = re.sub(r"&lt;((?:https?|mailto):[^&\s]+?)&gt;",
+               lambda m: keep('<a href="%s">%s</a>' % (m.group(1), m.group(1))), s)
+    # bare URLs not already inside a generated tag: link them, trim trailing punctuation
+    s = re.sub(r"https?://[^\s<>\x00]+", lambda m: _bare(m.group(0), keep), s)
+    s = re.sub(r"\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)", lambda m: keep("<strong><em>" + m.group(1) + "</em></strong>"), s)
+    s = re.sub(r"\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)", lambda m: keep("<strong>" + m.group(1) + "</strong>"), s)
+    s = re.sub(r"__(?=\S)(.+?)(?<=\S)__(?!_)", lambda m: keep("<strong>" + m.group(1) + "</strong>"), s)
+    s = re.sub(r"(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])", lambda m: keep("<em>" + m.group(1) + "</em>"), s)
+    s = re.sub(r"(?<![\w_])_(?=\S)(.+?)(?<=\S)_(?![\w_])", lambda m: keep("<em>" + m.group(1) + "</em>"), s)
+    s = re.sub(r"~~(?=\S)(.+?)(?<=\S)~~", lambda m: keep("<del>" + m.group(1) + "</del>"), s)
+    s = re.sub(r"\[([ xX])\]", lambda m: keep('<span class="box%s">&#x261%s</span>' %
+               ((" done" if m.group(1) != " " else ""), "1;" if m.group(1) != " " else "0;")), s)
+    s = s.replace("\x01", "<br>")
+    return re.sub(r"\x00(\d+)\x00", lambda m: toks[int(m.group(1))], s)
 
 
 # ---------- chrome ----------------------------------------------------------
@@ -154,7 +304,7 @@ h1{font-size:1.7em;margin:.2em 0 .4em}h2{margin-top:1.4em;border-bottom:1px soli
 code{background:var(--chip);padding:1px 5px;border-radius:4px;font:13px/1.5 ui-monospace,Consolas,monospace}
 pre{background:var(--chip);padding:12px;border-radius:8px;overflow-x:auto;border:1px solid var(--line)}pre code{background:none;padding:0}
 blockquote{border-left:3px solid var(--line);margin:1em 0;padding:.2em 1em;color:var(--dim)}
-ul{padding-left:1.3em}li{margin:.15em 0}hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}
+ul,ol{padding-left:1.4em}li{margin:.15em 0}li>p{margin:.3em 0}img{max-width:100%}hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:.4em 0 1.2em}.chip{background:var(--chip);border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:1px 10px;font-size:12px}
 .side{margin-top:2.5em;border-top:1px solid var(--line);padding-top:1em}.side h3{font-size:.85em;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
 .side a{display:inline-block;margin:2px 8px 2px 0;font-size:13px}
