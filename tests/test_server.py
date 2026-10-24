@@ -302,6 +302,24 @@ def main():
         s, b, h = get("/graph")
         check("graph still JSON for plain GET", s == 200 and isinstance(b, dict) and "nodes" in b, str(s))
 
+        # contract: wikilinks inside inline code or fences are DOCUMENTATION, not
+        # edges — a page describing `[[nowhere]]` syntax must not grow a phantom edge
+        (wiki / "queries").mkdir(parents=True, exist_ok=True)
+        (wiki / "queries" / "codex.md").write_text(
+            "---\ntitle: Codex\ncreated: 2026-01-01\nupdated: 2026-01-01\ntype: query\n"
+            "tags: [test]\nconfidence: high\n---\n# Codex\n\n"
+            "Write links as `[[target]]` in prose.\n\n```\nalso [[anotherfake]] syntax\n```\n\n"
+            "Real edge: [[alpha]].\n")
+        s, b2, _ = get("/graph")
+        phantom = [e for e in b2["edges"] if str(e[1]) in ("?nowhere", "?target", "?anotherfake")
+                   or str(e[0]).endswith("codex") and str(e[1]).startswith("?")]
+        check("wikilinks in code spans create no edges",
+              s == 200 and not phantom and ["queries/codex", "entities/alpha"] in b2["edges"], str(phantom))
+        s, ln, _ = get("/lint")
+        check("code-span wikilinks are not broken edges",
+              s == 200 and not any(e["from"].endswith("codex.md") for e in ln["broken_edges"]),
+              str([e for e in ln.get("broken_edges", []) if e["from"].endswith("codex.md")]))
+
         print("== unknown routes / methods")
         check("unknown GET 404", get("/nope")[0] == 404)
         check("unknown POST 404", req("POST", "/nope", {"a": 1})[0] == 404)

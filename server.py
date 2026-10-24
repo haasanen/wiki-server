@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-VERSION = "0.4.6"
+VERSION = "0.4.7"
 WIKI = Path(os.environ.get("WIKI_DIR", "/wiki"))
 PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")      # graph node dirs
 try:
@@ -138,9 +138,21 @@ def pages_path(rel: str) -> Path:
 
 # --------------------------------------------------------------------------- the graph
 
+CODE_SPANS = (r"(?s)```.*?```", r"`[^`\n]+`")
+
+
+def _strip_code(text: str) -> str:
+    """Blank out fenced and inline code so a `[[example]]` in backticks (docs,
+    changelogs, API help) never becomes a graph edge. Same-span logic as the
+    linker; only code is excluded, prose wikilinks stay live."""
+    for pat in CODE_SPANS:
+        text = re.sub(pat, lambda m: " " * len(m.group(0)), text)
+    return text
+
+
 def edges_from(text: str, own_stem: str) -> list[str]:
     out, seen = [], set()
-    for m in WIKILINK.finditer(text):
+    for m in WIKILINK.finditer(_strip_code(text)):
         t = m.group(1).strip()
         if t and t != own_stem and t not in seen:
             seen.add(t)
