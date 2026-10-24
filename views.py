@@ -471,7 +471,7 @@ var svg=document.getElementById("gsvg");if(!svg)return;
 var vb0=svg.getAttribute("viewBox").split(/[ ,]+/).map(Number),vb=vb0.slice();
 var gs=[].slice.call(svg.querySelectorAll("g.node")),pos=[],lines={},drag=null,pts={},pd=0,moved=false;
 gs.forEach(function(g){var m=g.getAttribute("transform").match(/translate\\(([-\\d.]+),([-\\d.]+)\\)/);pos.push([+m[1],+m[2]]);});
-[].forEach.call(svg.querySelectorAll("line[data-f],polyline[data-f]"),function(L){
+[].forEach.call(svg.querySelectorAll("line[data-f]"),function(L){
   var f=+L.getAttribute("data-f"),t=+L.getAttribute("data-t");
   (lines[f]=lines[f]||[]).push(L);(lines[t]=lines[t]||[]).push(L);});
 function setvb(){svg.setAttribute("viewBox",vb.map(function(v){return v.toFixed(1)}).join(" "));}
@@ -490,12 +490,10 @@ function fit(){var x0=1/0,y0=1/0,x1=-1/0,y1=-1/0,any=false;
   vb=[x0-m,y0-m,(x1-x0)+2*m,(y1-y0)+2*m];setvb();}
 function redraw(i){gs[i].setAttribute("transform","translate("+pos[i][0].toFixed(1)+","+pos[i][1].toFixed(1)+")");
   (lines[i]||[]).forEach(function(L){var f=+L.getAttribute("data-f"),t=+L.getAttribute("data-t"),
-    a=pos[f],b=pos[t],vx=null,vy=null,vv=L.getAttribute("data-v"),x2=b[0],y2=b[1],sx=a[0],sy=a[1];
-    if(vv){var q=vv.split(",");vx=+q[0];vy=+q[1];sx=vx;sy=vy;}
-    if(L.getAttribute("marker-end")){var dx=b[0]-sx,dy=b[1]-sy,d=Math.sqrt(dx*dx+dy*dy)||1;
+    a=pos[f],b=pos[t],x2=b[0],y2=b[1];
+    if(L.getAttribute("marker-end")){var dx=b[0]-a[0],dy=b[1]-a[1],d=Math.sqrt(dx*dx+dy*dy)||1;
       x2=b[0]-dx/d*8;y2=b[1]-dy/d*8;}
-    if(vx!==null){L.setAttribute("points",a[0].toFixed(1)+","+a[1].toFixed(1)+" "+vx+","+vy+" "+x2.toFixed(1)+","+y2.toFixed(1));}
-    else{L.setAttribute("x1",a[0].toFixed(1));L.setAttribute("y1",a[1].toFixed(1));
+    L.setAttribute("x1",a[0].toFixed(1));L.setAttribute("y1",a[1].toFixed(1));
     L.setAttribute("x2",x2.toFixed(1));L.setAttribute("y2",y2.toFixed(1));});}
 function two(){var k=Object.keys(pts);return k.length===2?k:null;}
 function dist(){var T=two();return Math.hypot(pts[T[0]][0]-pts[T[1]][0],pts[T[0]][1]-pts[T[1]][1]);}
@@ -685,7 +683,38 @@ def _graph_layout(nodes: list, edges: list):
                         continue
                     if _segs_cross(xy, pos[q], pos[u], pos[v]):
                         cross += 1.0
+                # v0.4.4 (Simo vetoed bent edges — everything stays straight, so the
+                # placement must also dodge dot-on-line overlaps itself: an edge of p
+                # sweeping over an unrelated dot costs the same as a crossing)
+                vx, vy = xy[0] - pos[q][0], xy[1] - pos[q][1]
+                lv2 = vx * vx + vy * vy
+                if lv2 >= 1e-9:
+                    for o in keys:
+                        if o == p or o == q:
+                            continue
+                        wx, wy = pos[o][0] - xy[0], pos[o][1] - xy[1]
+                        cr = vx * wy - vy * wx
+                        s = (wx * vx + wy * vy) / lv2
+                        if 0.02 <= s <= 0.98 and abs(cr) / math.sqrt(lv2) < 17.0:
+                            cross += 1.0
                 length += math.hypot(xy[0] - pos[q][0], xy[1] - pos[q][1])
+            # ...and the REVERSE direction: p itself parked on someone else's
+            # line costs p's move too — without this term a dot can be nudged
+            # onto a passing edge for free and the greedy pass never moves it off.
+            for u, v in eidx:
+                if u == p or v == p:
+                    continue
+                ax, ay = pos[u]
+                bx, by = pos[v]
+                vx2, vy2 = bx - ax, by - ay
+                lv2b = vx2 * vx2 + vy2 * vy2
+                if lv2b < 1e-9:
+                    continue
+                wx2, wy2 = xy[0] - ax, xy[1] - ay
+                cr2 = vx2 * wy2 - vy2 * wx2
+                s2 = (wx2 * vx2 + wy2 * vy2) / lv2b
+                if 0.02 <= s2 <= 0.98 and abs(cr2) / math.sqrt(lv2b) < 17.0:
+                    cross += 1.0
             viol = 0.0
             for o in keys:
                 if o == p:
@@ -714,94 +743,6 @@ def _graph_layout(nodes: list, edges: list):
             if not improved:
                 break
 
-    # v0.4.4 (Simo: "there are research papers on displaying graphs that minimally
-    # overlap" — yes: edge ROUTING is a separate step from node placement, cf.
-    # libavoid/ELK). Node nudges only fix line-vs-line crossings; a straight line
-    # also passes OVER unrelated dots, which no node move fixes while the dot sits
-    # on the line. So after placement every edge finds the dots it crosses
-    # (within-segment perpendicular distance < 17px) and, when a detour vertex
-    # exists that sees both endpoints clear of every other dot, draws itself as a
-    # polyline around the obstruction instead of through it — only if that also
-    # strictly reduces its line-vs-line crossings. Deterministic.
-    routed = {}
-    if GRAPH_EDGE_PASS and len(keys) <= 150:
-        eidx2 = [(a, b) for a, b in edges if a in pos and b in pos]
-
-        def _hits(pa, pb, skip):
-            out = []
-            v = (pb[0] - pa[0], pb[1] - pa[1])
-            lv2 = v[0] * v[0] + v[1] * v[1]
-            if lv2 < 1e-9:
-                return out
-            for o in keys:
-                if o in skip:
-                    continue
-                po = pos[o]
-                w = (po[0] - pa[0], po[1] - pa[1])
-                cr = v[0] * w[1] - v[1] * w[0]
-                s = (w[0] * v[0] + w[1] * v[1]) / lv2
-                if 0.02 <= s <= 0.98 and abs(cr) / math.sqrt(lv2) < 17.0:
-                    out.append(o)
-            return out
-
-        for ei, (a, b) in enumerate(eidx2):
-            pa, pb = pos[a], pos[b]
-            if not _hits(pa, pb, (a, b)):
-                continue
-            dx, dy = pb[0] - pa[0], pb[1] - pa[1]
-            L = math.hypot(dx, dy) or 1.0
-            nx, ny = -dy / L, dx / L
-
-            def _dd_segs(pts_a, pts_b, other_a, other_b):
-                return _segs_cross(pts_a, pts_b, other_a, other_b)
-
-            def _dd_for(segs):
-                n = 0
-                for u, v2 in eidx2:
-                    if (u, v2) == (a, b) or a in (u, v2) or b in (u, v2):
-                        continue
-                    pu, pv2 = pos[u], pos[v2]
-                    if any(_dd_segs(s1, s2, pu, pv2) for s1, s2 in segs):
-                        n += 1
-                return n
-
-            base_dd = _dd_for([(pa, pb)])
-            best = None
-            for o in sorted(_hits(pa, pb, (a, b))):
-                po = pos[o]
-                for r in (26.0, 38.0, 52.0):
-                    for sgn in (1, -1):
-                        vxy = (po[0] + sgn * r * nx, po[1] + sgn * r * ny)
-                        segs = [(pa, vxy), (vxy, pb)]
-                        blocked = False
-                        for q in keys:
-                            if q in (a, b):
-                                continue
-                            pq = pos[q]
-                            for s1, s2 in segs:
-                                vv = (s2[0] - s1[0], s2[1] - s1[1])
-                                lv2 = vv[0] * vv[0] + vv[1] * vv[1]
-                                if lv2 < 1e-9:
-                                    continue
-                                ww = (pq[0] - s1[0], pq[1] - s1[1])
-                                crc = vv[0] * ww[1] - vv[1] * ww[0]
-                                ss = (ww[0] * vv[0] + ww[1] * vv[1]) / lv2
-                                if 0.02 <= ss <= 0.98 and abs(crc) / math.sqrt(lv2) < 17.0:
-                                    blocked = True
-                                    break
-                            if blocked:
-                                break
-                        if blocked:
-                            continue
-                        dd = _dd_for(segs)
-                        extra = (abs(vxy[0] - pa[0]) + abs(vxy[0] - pb[0])
-                                 + abs(vxy[1] - pa[1]) + abs(vxy[1] - pb[1]))
-                        cand = (100.0 * max(0, dd - base_dd) + 10.0 * dd + 0.0004 * extra, dd, vxy)
-                        if best is None or cand < best:
-                            best = cand
-            if best is not None and best[1] <= base_dd:
-                routed[(a, b)] = best[2]
-
     # v0.4.3 (6): CANVAS FITS CONTENT, not content fits canvas. Hard-clamping the layout
     # to a fixed canvas piled dots on the walls — measured 167/199 close pairs stuck on
     # borders in the 200-node star test (every leaf of a hub gets pushed outward; walls
@@ -809,15 +750,12 @@ def _graph_layout(nodes: list, edges: list):
     # label ends 10px before the right edge. No walls -> no clamp wars.
     xs = [v[0] for v in pos.values()]
     ys = [v[1] for v in pos.values()]
-    xs += [v[0] for v in routed.values()]
-    ys += [v[1] for v in routed.values()]
     reach = max(8.0 + len(Path(p).stem) * GRAPH_FONT_W for p in keys) + 10.0
     sx, sy = 30.0 - min(xs), 26.0 - min(ys)
     pos = {p: (p0[0] + sx, p0[1] + sy) for p, p0 in pos.items()}
-    routed = {(a, b): (vx + sx, vy + sy) for (a, b), (vx, vy) in routed.items()}
     W = max(W, max(xs) + sx + reach)
     Hh = max(Hh, max(ys) + sy + 34.0)
-    return W, Hh, pos, routed
+    return W, Hh, pos
 
 
 def page_graph(core, g):
@@ -831,7 +769,7 @@ def page_graph(core, g):
         if len(_LAYOUT_MEMO) > 3:
             _LAYOUT_MEMO.clear()
         _LAYOUT_MEMO[mkey] = _graph_layout(nodes, g["edges"])
-    W, Hh, pos, routed = _LAYOUT_MEMO[mkey]
+    W, Hh, pos = _LAYOUT_MEMO[mkey]
     lines, circles = [], []
     # v0.4.3 (3): links are directional (a's page contains [[b]]) — one-way edges get an
     # arrowhead at the target, mutual pairs stay plain lines (Simo's spec). The line ends
@@ -843,22 +781,7 @@ def page_graph(core, g):
             (x1, y1), (x2, y2) = pos[f_], pos[t_]
             cls = "edge"
             data = f'data-f="{node_idx[f_]}" data-t="{node_idx[t_]}" '
-            rt = routed.get((f_, t_))
-            if rt:
-                # v0.4.4: routed edge — one deliberate bend around an obstructing dot
-                # (detour vertex kept in data-v so node drags re-draw it client-side).
-                vx, vy = rt
-                last_dx, last_dy = x2 - vx, y2 - vy
-                if (t_, f_) in eset:
-                    lines.append(f'<polyline {data}data-v="{vx:.0f},{vy:.0f}" class="{cls}" '
-                                 f'points="{x1:.0f},{y1:.0f} {vx:.0f},{vy:.0f} {x2:.0f},{y2:.0f}"/>')
-                else:
-                    ld = math.hypot(last_dx, last_dy) or 1.0
-                    ex, ey = x2 - last_dx / ld * 8.0, y2 - last_dy / ld * 8.0
-                    lines.append(f'<polyline {data}data-v="{vx:.0f},{vy:.0f}" class="{cls}" '
-                                 f'points="{x1:.0f},{y1:.0f} {vx:.0f},{vy:.0f} {ex:.0f},{ey:.0f}" '
-                                 f'marker-end="url(#ah)"/>')
-            elif (t_, f_) in eset:
+            if (t_, f_) in eset:
                 lines.append(f'<line {data}class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}"/>')
             else:
                 dx, dy = x2 - x1, y2 - y1
