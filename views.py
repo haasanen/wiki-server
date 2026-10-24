@@ -322,6 +322,10 @@ table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px soli
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
 i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#3d444d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
+#gsvg{touch-action:none;cursor:grab;display:block}
+.gnav{display:flex;gap:6px;justify-content:flex-end;margin:6px 0}
+.gnav button{min-width:38px;height:32px;padding:0 10px;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:15px;line-height:1;cursor:pointer}
+.gnav button:hover{border-color:var(--acc);color:var(--acc)}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
 """
 
@@ -449,6 +453,86 @@ def _node_colour(path: str) -> str:
         if kind != "other" and path.startswith(kind + "/"):
             return colour
     return GRAPH_COLORS["other"]
+
+
+# v0.4.4 (Simo: "the graph needs to be more interactable... proper intuitive navigation
+# controls"): interactions stolen from Cytoscape/D3 — wheel zoom, drag-pan, node drag,
+# pinch, fit-to-content, on-screen buttons, keyboard — in ~80 lines of vanilla JS.
+# Zero external files: if JS is off the page is still the full static SVG.
+GRAPH_NAV = ('<div class="gnav">'
+             '<button data-a="in" title="zoom in (+)">+</button>'
+             '<button data-a="out" title="zoom out (-)">&minus;</button>'
+             '<button data-a="fit" title="fit graph to window (f)">fit</button>'
+             '<button data-a="reset" title="reset view (r)">&#8634;</button>'
+             '</div>')
+GRAPH_JS = """<script>
+(function(){
+var svg=document.getElementById("gsvg");if(!svg)return;
+var vb0=svg.getAttribute("viewBox").split(/[ ,]+/).map(Number),vb=vb0.slice();
+var gs=[].slice.call(svg.querySelectorAll("g.node")),pos=[],lines={},drag=null,pts={},pd=0,moved=false;
+gs.forEach(function(g){var m=g.getAttribute("transform").match(/translate\\(([-\\d.]+),([-\\d.]+)\\)/);pos.push([+m[1],+m[2]]);});
+[].forEach.call(svg.querySelectorAll("line[data-f]"),function(L){
+  var f=+L.getAttribute("data-f"),t=+L.getAttribute("data-t");
+  (lines[f]=lines[f]||[]).push(L);(lines[t]=lines[t]||[]).push(L);});
+function setvb(){svg.setAttribute("viewBox",vb.map(function(v){return v.toFixed(1)}).join(" "));}
+function unit(){return vb[2]/svg.getBoundingClientRect().width;}
+function s2v(c){var r=svg.getBoundingClientRect();return[vb[0]+(c.clientX-r.left)*unit(),vb[1]+(c.clientY-r.top)*unit()];}
+function zoomAt(cx,cy,k){var nw=vb[2]*k,nh=vb[3]*k,min=vb0[2]/6,max=vb0[2]*1.5;
+  if(nw<min||nw>max)return;var mx=(cx-vb[0])/vb[2],my=(cy-vb[1])/vb[3];
+  vb[0]+=(vb[2]-nw)*mx;vb[1]+=(vb[3]-nh)*my;vb[2]=nw;vb[3]=nh;setvb();}
+function center(){return[vb[0]+vb[2]/2,vb[1]+vb[3]/2];}
+function fit(){var x0=1/0,y0=1/0,x1=-1/0,y1=-1/0,any=false;
+  gs.forEach(function(g,i){var b;try{b=g.getBBox()}catch(err){return}any=true;
+    var px=pos[i][0],py=pos[i][1];
+    x0=Math.min(x0,px+b.x);y0=Math.min(y0,py+b.y);
+    x1=Math.max(x1,px+b.x+b.width);y1=Math.max(y1,py+b.y+b.height);});
+  if(!any)return;var m=Math.max((x1-x0)*0.05,20);
+  vb=[x0-m,y0-m,(x1-x0)+2*m,(y1-y0)+2*m];setvb();}
+function redraw(i){gs[i].setAttribute("transform","translate("+pos[i][0].toFixed(1)+","+pos[i][1].toFixed(1)+")");
+  (lines[i]||[]).forEach(function(L){var f=+L.getAttribute("data-f"),t=+L.getAttribute("data-t"),
+    a=pos[f],b=pos[t],x2=b[0],y2=b[1];
+    if(L.getAttribute("marker-end")){var dx=b[0]-a[0],dy=b[1]-a[1],d=Math.sqrt(dx*dx+dy*dy)||1;
+      x2=b[0]-dx/d*8;y2=b[1]-dy/d*8;}
+    L.setAttribute("x1",a[0].toFixed(1));L.setAttribute("y1",a[1].toFixed(1));
+    L.setAttribute("x2",x2.toFixed(1));L.setAttribute("y2",y2.toFixed(1));});}
+function two(){var k=Object.keys(pts);return k.length===2?k:null;}
+function dist(){var T=two();return Math.hypot(pts[T[0]][0]-pts[T[1]][0],pts[T[0]][1]-pts[T[1]][1]);}
+svg.addEventListener("wheel",function(e){e.preventDefault();var p=s2v(e);
+  zoomAt(p[0],p[1],Math.pow(1.0015,e.deltaY));},{passive:false});
+svg.addEventListener("pointerdown",function(e){
+  pts[e.pointerId]=[e.clientX,e.clientY];
+  if(two()){pd=dist();drag=null;return;}
+  var g=e.target.closest?e.target.closest("g.node"):null,s={x:e.clientX,y:e.clientY,v:vb.slice()};
+  if(g){s.i=gs.indexOf(g);s.p=pos[s.i].slice();}
+  drag=s;moved=false;svg.setPointerCapture(e.pointerId);});
+svg.addEventListener("pointermove",function(e){
+  if(!pts[e.pointerId])return;
+  if(two()){var nd=dist();
+    if(pd&&nd){var T=two(),mid=s2v({clientX:(pts[T[0]][0]+pts[T[1]][0])/2,clientY:(pts[T[0]][1]+pts[T[1]][1])/2});
+      zoomAt(mid[0],mid[1],pd/nd);pd=nd;}
+    pts[e.pointerId]=[e.clientX,e.clientY];return;}
+  if(!drag)return;
+  var dx=(e.clientX-drag.x)*unit(),dy=(e.clientY-drag.y)*unit();
+  if(Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y)>4)moved=true;
+  if(drag.i!==undefined){pos[drag.i]=[drag.p[0]+dx,drag.p[1]+dy];redraw(drag.i);}
+  else{vb[0]=drag.v[0]-dx;vb[1]=drag.v[1]-dy;setvb();}});
+function up(e){delete pts[e.pointerId];pd=0;drag=null;}
+svg.addEventListener("pointerup",up);svg.addEventListener("pointercancel",up);
+svg.addEventListener("click",function(e){if(moved){e.preventDefault();e.stopPropagation();moved=false;}},true);
+svg.addEventListener("dblclick",function(e){if(!(e.target.closest&&e.target.closest("g.node"))){vb=vb0.slice();setvb();}});
+[].forEach.call(document.querySelectorAll(".gnav button"),function(b){
+  b.addEventListener("click",function(){var a=b.getAttribute("data-a"),c=center();
+    if(a==="in")zoomAt(c[0],c[1],0.8);else if(a==="out")zoomAt(c[0],c[1],1.25);
+    else if(a==="fit")fit();else{vb=vb0.slice();setvb();}});});
+document.addEventListener("keydown",function(e){
+  if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
+  var c=center();
+  if(e.key==="+"||e.key==="=")zoomAt(c[0],c[1],0.8);
+  else if(e.key==="-")zoomAt(c[0],c[1],1.25);
+  else if(e.key==="f")fit();
+  else if(e.key==="r"||e.key==="0"){vb=vb0.slice();setvb();}});
+})();
+</script>"""
 
 
 _LAYOUT_MEMO: dict = {}
@@ -596,17 +680,19 @@ def page_graph(core, g):
     # arrowhead at the target, mutual pairs stay plain lines (Simo's spec). The line ends
     # at the dot's rim so the arrowhead isn't buried under the node.
     eset = {(f_, t_) for f_, t_ in g["edges"]}
+    node_idx = {nd["path"]: i for i, nd in enumerate(nodes)}
     for f_, t_ in g["edges"]:
         if f_ in pos and t_ in pos:
             (x1, y1), (x2, y2) = pos[f_], pos[t_]
             cls = "edge"
+            data = f'data-f="{node_idx[f_]}" data-t="{node_idx[t_]}" '
             if (t_, f_) in eset:
-                lines.append(f'<line class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}"/>')
+                lines.append(f'<line {data}class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}"/>')
             else:
                 dx, dy = x2 - x1, y2 - y1
                 dd = math.hypot(dx, dy) or 1.0
                 ex, ey = x2 - dx / dd * 8.0, y2 - dy / dd * 8.0
-                lines.append(f'<line class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{ex:.0f}" y2="{ey:.0f}" marker-end="url(#ah)"/>')
+                lines.append(f'<line {data}class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{ex:.0f}" y2="{ey:.0f}" marker-end="url(#ah)"/>')
     defs = ('<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
             'markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#3d444d"/></marker></defs>')
     for nd in nodes:
@@ -617,12 +703,17 @@ def page_graph(core, g):
         # (Simo's screenshot: five truncated "note-ste..." fragments + an unreadable pile).
         stem = esc(Path(nd["path"]).stem)
         if x + 8 + len(stem) * GRAPH_FONT_W > W - 4:
-            anchor, tx = ' text-anchor="end"', x - 8
+            anchor, tx = ' text-anchor="end"', -8
         else:
-            anchor, tx = "", x + 8
-        circles.append(f'<g class="node"><a href="/view?path={urlquote(nd["path"])}"><circle cx="{x:.0f}" cy="{y:.0f}" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
-                       f'<text{anchor} x="{tx:.0f}" y="{y + 3:.0f}"><tspan>{stem}</tspan></text></a></g>')
-    svg = f'<svg viewBox="0 0 {W:.0f} {Hh:.0f}" xmlns="http://www.w3.org/2000/svg">{defs}{"".join(lines)}{"".join(circles)}</svg>'
+            anchor, tx = "", 8
+        i = node_idx[nd["path"]]
+        # v0.4.4: translate() on the group + data-i so vanilla JS can drag nodes and
+        # retarget their edges client-side (no external library — the ideas are stolen,
+        # the dependency is not). Circle sits at 0,0; label offset is group-relative.
+        circles.append(f'<g class="node" data-i="{i}" transform="translate({x:.0f},{y:.0f})"><a href="/view?path={urlquote(nd["path"])}"><circle cx="0" cy="0" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
+                       f'<text{anchor} x="{tx}" y="3"><tspan>{stem}</tspan></text></a></g>')
+    svg = (f'<svg id="gsvg" viewBox="0 0 {W:.0f} {Hh:.0f}" xmlns="http://www.w3.org/2000/svg">'
+           f'{defs}{"".join(lines)}{"".join(circles)}</svg>')
     # v0.4.3 (4): a colour legend written in words ("blue entity") is a lazy legend — it
     # shows real swatches, sourced from the same GRAPH_COLORS the dots are painted with,
     # plus line samples for one-way (arrowed) vs mutual, so nothing can drift apart. (Simo)
@@ -634,8 +725,9 @@ def page_graph(core, g):
               '<span class="ll"></span>mutual')
     if broken:
         legend += f'<span class="llb"></span>{len(broken)} broken'
+    legend += '<span class="muted" style="margin-left:12px">scroll = zoom &middot; drag node = move &middot; double-click = reset</span>'
     body = (f'<h1>graph</h1><p class="muted">{len(nodes)} nodes · {len(g["edges"])} edges'
-            f'<br>{legend}</p>' + svg)
+            f'<br>{legend}</p>' + GRAPH_NAV + svg + GRAPH_JS)
     return shell("graph", body)
 
 

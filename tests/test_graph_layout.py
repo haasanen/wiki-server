@@ -43,12 +43,15 @@ def edge_clip(svg):
     """labels crossing the canvas edge — with flip + grown canvas this must be zero"""
     Wc, _ = canvas(svg)
     n = 0
-    for m in re.finditer(r'<text([^>]*)x="([-\d.]+)" y="[-\d.]+"><tspan>([^<]+)</tspan>', svg):
-        end, x, t = "text-anchor" in m.group(1), float(m.group(2)), m.group(3)
-        w = len(t) * GRAPH_FONT_W
-        x0, x1 = (x - w, x) if end else (x, x + w)
-        if x0 < 0 or x1 > Wc:
-            n += 1
+    for blk in svg.split('<g class="node" data-i')[1:]:
+        m = re.search(r'translate\(([-\d.]+),([-\d.]+)\)', blk)
+        t = re.search(r'<text([^>]*)x="([-\d.]+)"[^>]*><tspan>([^<]+)</tspan>', blk)
+        if m and t:
+            x = float(m.group(1)) + float(t.group(2))
+            w = len(t.group(3)) * GRAPH_FONT_W
+            x0, x1 = (x - w, x) if "text-anchor" in t.group(1) else (x, x + w)
+            if x0 < 0 or x1 > Wc:
+                n += 1
     return n
 
 
@@ -62,7 +65,8 @@ def build(n=40):
 
 
 def circles(svg):
-    return [(int(a), int(b)) for a, b in re.findall(r'<circle cx="(\d+)" cy="(\d+)"', svg)]
+    return [(float(a), float(b)) for a, b in
+            re.findall(r'<g class="node" data-i="\d+" transform="translate\(([-\d.]+),([-\d.]+)\)"', svg)]
 
 
 def long_stem_build(n=30):
@@ -79,10 +83,11 @@ def long_stem_build(n=30):
 
 def labeled(svg):
     out = []
-    for blk in svg.split('<g class="node">')[1:]:
-        m = re.search(r'<circle cx="(\d+)" cy="(\d+)".*?<tspan>([^<]+)</tspan>', blk, re.S)
+    for blk in svg.split('<g class="node" data-i')[1:]:
+        m = re.search(r'translate\(([-\d.]+),([-\d.]+)\).*?<text([^>]*)x="([-\d.]+)"[^>]*><tspan>([^<]+)</tspan>', blk, re.S)
         if m:
-            out.append((int(m[1]), int(m[2]), m[3]))
+            # label coords are absolute: group translate + group-relative text offset
+            out.append((float(m.group(1)) + float(m.group(4)), float(m.group(2)) + 3, m.group(5)))
     return out
 
 
@@ -113,7 +118,16 @@ def main():
     # v0.4.3: the whole node — dot AND label — must be a real link. The old markup had
     # the cursor promise on the dot (which did nothing) and pointer-events:none on the
     # label (which killed the only link): nodes looked clickable, were dead. (Simo, 2026-10-24)
-    assert svg.count('<g class="node"><a href="/view?path=') == len(pts), "dots are not clickable"
+    assert svg.count('<g class="node" data-i=') == len(pts), "dots are not clickable"
+    # v0.4.4 (Simo: "proper intuitive navigation controls"): buttons + inline JS, and a
+    # hard zero-dependency guarantee — the graph page may reference NO external asset.
+    assert 'id="gsvg"' in svg and '<div class="gnav">' in svg and svg.count("<button") == 4, \
+        "graph navigation controls missing"
+    assert "<script>" in svg and "<script src=" not in svg, "interaction JS must be inline"
+    assert "http://" not in svg.replace('xmlns="http://www.w3.org/2000/svg"', ""), \
+        "graph page references an external resource (dependency creep)"
+    assert svg.count('data-i="') == len(pts), "nodes lack drag identity"
+    assert svg.count('data-f="') == len(g["edges"]), "edges lack drag rewiring data"
     src = (pathlib.Path(__file__).resolve().parents[1] / "views.py").read_text(encoding="utf-8")
     assert ".node text{fill:var(--fg);font-size:9px;pointer-events:none}" not in src, \
         "the label click-killer is back"
@@ -142,11 +156,12 @@ def main():
                     ["entities/gamma", "entities/alpha"]]}
     dgsvg = page_graph(None, dg)
     # scope to the graph svg itself: the legend legitimately adds its own sample line
-    dgsvg = re.search(r'<svg viewBox.*?</svg>', dgsvg, re.S).group(0)
+    dgsvg = re.search(r'<svg[^>]*viewBox.*?</svg>', dgsvg, re.S).group(0)
     assert dgsvg.count("<line") == 3, "one line per edge entry"
     assert dgsvg.count('marker-end="url(#ah)"') == 1, "exactly one arrowhead (the one-way edge)"
     assert '<marker id="ah"' in dgsvg, "the arrow marker is undefined"
-    gp = {s: (x, y) for x, y, s in labeled(dgsvg)}
+    # node markup order == nodes list order: alpha, beta, gamma
+    gp = dict(zip(("alpha", "beta", "gamma"), circles(dgsvg)))
     m = re.search(r'x1="(\d+)" y1="(\d+)" x2="(\d+)" y2="(\d+)" marker-end', dgsvg)
     x1, y1, x2, y2 = map(int, m.groups())
     assert (x1, y1) == gp["gamma"], "the arrow belongs on the one-way edge, at its source"
