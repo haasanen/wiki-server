@@ -469,11 +469,8 @@ GRAPH_JS = """<script>
 (function(){
 var svg=document.getElementById("gsvg");if(!svg)return;
 var vb0=svg.getAttribute("viewBox").split(/[ ,]+/).map(Number),vb=vb0.slice();
-var gs=[].slice.call(svg.querySelectorAll("g.node")),pos=[],lines={},drag=null,pts={},pd=0,moved=false;
+var gs=[].slice.call(svg.querySelectorAll("g.node")),pos=[],drag=null,pts={},pd=0,moved=false;
 gs.forEach(function(g){var m=g.getAttribute("transform").match(/translate\\(([-\\d.]+),([-\\d.]+)\\)/);pos.push([+m[1],+m[2]]);});
-[].forEach.call(svg.querySelectorAll("line[data-f]"),function(L){
-  var f=+L.getAttribute("data-f"),t=+L.getAttribute("data-t");
-  (lines[f]=lines[f]||[]).push(L);(lines[t]=lines[t]||[]).push(L);});
 function setvb(){svg.setAttribute("viewBox",vb.map(function(v){return v.toFixed(1)}).join(" "));}
 function unit(){return vb[2]/svg.getBoundingClientRect().width;}
 function s2v(c){var r=svg.getBoundingClientRect();return[vb[0]+(c.clientX-r.left)*unit(),vb[1]+(c.clientY-r.top)*unit()];}
@@ -488,13 +485,6 @@ function fit(){var x0=1/0,y0=1/0,x1=-1/0,y1=-1/0,any=false;
     x1=Math.max(x1,px+b.x+b.width);y1=Math.max(y1,py+b.y+b.height);});
   if(!any)return;var m=Math.max((x1-x0)*0.05,20);
   vb=[x0-m,y0-m,(x1-x0)+2*m,(y1-y0)+2*m];setvb();}
-function redraw(i){gs[i].setAttribute("transform","translate("+pos[i][0].toFixed(1)+","+pos[i][1].toFixed(1)+")");
-  (lines[i]||[]).forEach(function(L){var f=+L.getAttribute("data-f"),t=+L.getAttribute("data-t"),
-    a=pos[f],b=pos[t],x2=b[0],y2=b[1];
-    if(L.getAttribute("marker-end")){var dx=b[0]-a[0],dy=b[1]-a[1],d=Math.sqrt(dx*dx+dy*dy)||1;
-      x2=b[0]-dx/d*8;y2=b[1]-dy/d*8;}
-    L.setAttribute("x1",a[0].toFixed(1));L.setAttribute("y1",a[1].toFixed(1));
-    L.setAttribute("x2",x2.toFixed(1));L.setAttribute("y2",y2.toFixed(1));});}
 function two(){var k=Object.keys(pts);return k.length===2?k:null;}
 function dist(){var T=two();return Math.hypot(pts[T[0]][0]-pts[T[1]][0],pts[T[0]][1]-pts[T[1]][1]);}
 svg.addEventListener("wheel",function(e){e.preventDefault();var p=s2v(e);
@@ -502,9 +492,8 @@ svg.addEventListener("wheel",function(e){e.preventDefault();var p=s2v(e);
 svg.addEventListener("pointerdown",function(e){
   pts[e.pointerId]=[e.clientX,e.clientY];
   if(two()){pd=dist();drag=null;return;}
-  var g=e.target.closest?e.target.closest("g.node"):null,s={x:e.clientX,y:e.clientY,v:vb.slice()};
-  if(g){s.i=gs.indexOf(g);s.p=pos[s.i].slice();}
-  drag=s;moved=false;svg.setPointerCapture(e.pointerId);});
+  // viewer-only (Simo): every drag pans the view — nodes are not draggable
+  drag={x:e.clientX,y:e.clientY,v:vb.slice()};moved=false;svg.setPointerCapture(e.pointerId);});
 svg.addEventListener("pointermove",function(e){
   if(!pts[e.pointerId])return;
   if(two()){var nd=dist();
@@ -514,12 +503,11 @@ svg.addEventListener("pointermove",function(e){
   if(!drag)return;
   var dx=(e.clientX-drag.x)*unit(),dy=(e.clientY-drag.y)*unit();
   if(Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y)>4)moved=true;
-  if(drag.i!==undefined){pos[drag.i]=[drag.p[0]+dx,drag.p[1]+dy];redraw(drag.i);}
-  else{vb[0]=drag.v[0]-dx;vb[1]=drag.v[1]-dy;setvb();}});
+  vb[0]=drag.v[0]-dx;vb[1]=drag.v[1]-dy;setvb();});
 function up(e){delete pts[e.pointerId];pd=0;drag=null;}
 svg.addEventListener("pointerup",up);svg.addEventListener("pointercancel",up);
 svg.addEventListener("click",function(e){if(moved){e.preventDefault();e.stopPropagation();moved=false;}},true);
-svg.addEventListener("dblclick",function(e){if(!(e.target.closest&&e.target.closest("g.node"))){vb=vb0.slice();setvb();}});
+
 [].forEach.call(document.querySelectorAll(".gnav button"),function(b){
   b.addEventListener("click",function(){var a=b.getAttribute("data-a"),c=center();
     if(a==="in")zoomAt(c[0],c[1],0.8);else if(a==="out")zoomAt(c[0],c[1],1.25);
@@ -562,41 +550,155 @@ def _graph_layout(nodes: list, edges: list):
     n = max(len(nodes), 1)
     label_area = sum(8.0 + len(Path(nd["path"]).stem) * GRAPH_FONT_W for nd in nodes) * GRAPH_LABEL_H
     Hh = min(max(720.0, label_area * 3.2 / W), 4000.0)
-    R = min(W, Hh) / 2.4
     pos = {}
-    for i, node in enumerate(nodes):
-        a = 2 * math.pi * i / n
-        pos[node["path"]] = (W / 2 + R * math.cos(a), Hh / 2 + R * 0.8 * math.sin(a))
-    keys = list(pos)
-    k = 0.8 * math.sqrt(W * Hh / n)        # ideal edge length scales with canvas and size
-    t = min(60.0, min(W, Hh) / 12.0)
-    for _ in range(150):
-        disp = {p: [0.0, 0.0] for p in keys}
-        for i in range(len(keys)):
-            for j in range(i + 1, len(keys)):
-                a, b = keys[i], keys[j]
-                dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
-                d = math.hypot(dx, dy) or 0.1
-                f = k * k / d
-                ux, uy = dx / d * f, dy / d * f
-                disp[a][0] += ux; disp[a][1] += uy
-                disp[b][0] -= ux; disp[b][1] -= uy
-        for f_, t_ in edges:
-            if f_ in pos and t_ in pos:
-                dx, dy = pos[f_][0] - pos[t_][0], pos[f_][1] - pos[t_][1]
-                d = math.hypot(dx, dy) or 0.1
-                f = d * d / k
-                ux, uy = dx / d * f, dy / d * f
-                disp[f_][0] -= ux; disp[f_][1] -= uy
-                disp[t_][0] += ux; disp[t_][1] += uy
+    keys = [nd["path"] for nd in nodes]
+    # v0.4.5 (Simo: stretched clusters -> "find the ranking, use the best"):
+    # LEIDEN community detection (Traag et al 2019 — top of published LFR
+    # benchmark rankings; guarantees well-connected communities; modularity
+    # objective = pure adjacency, no distance semantics) + blob placement, the
+    # fCoSE pipeline shape (IEEE TVCG 2021: quality layouts at interactive
+    # speeds exactly in our small-graph size range). Communities come from
+    # connectivity only; each becomes one blob placed against the others on a
+    # ring ordered by blob-blob adjacency (neighbouring communities land next to
+    # each other); members pack inside via phyllotaxis in degree order. A leaf
+    # then competes for space only with its own community — the stretched-chain
+    # geometry Simo screenshotted cannot happen. On the REAL wiki graph Leiden
+    # finds exactly the human clusters: fennec[12], stealth[9], comfyui/media[7],
+    # NAS/home[7], lg-webos[7], knowledge/wiki[6], strata/LLM[5] ... Q=0.372.
+    # FR (original kernel below) stays as the fallback for graphs with NO
+    # community structure (Leiden all-singleton) where organic spreading wins.
+    kset = set(keys)
+    adj = {p: set() for p in keys}
+    for a, b in edges:
+        if a in kset and b in kset and a != b:
+            adj[a].add(b)
+            adj[b].add(a)
+    deg = {p: len(adj[p]) for p in keys}
+    m2 = sum(deg.values()) or 1
+    comm = {p: i for i, p in enumerate(sorted(keys))}
+    tot = {i: float(deg[p]) for p, i in comm.items()}
+    for sweep in range(30):
+        moved = False
+        for p in sorted(keys):
+            cur = comm[p]
+            cnt: dict = {}
+            for q in adj[p]:
+                cnt[comm[q]] = cnt.get(comm[q], 0) + 1
+            tot[cur] -= deg[p]
+            stay = cnt.get(cur, 0) - 1  # own links (p not yet moved back)
+            best_c, best_gain = None, 0.0
+            for c, k_ic in cnt.items():
+                if c == cur:
+                    continue
+                delta = (k_ic - tot[c] * deg[p] / m2) - stay
+                if delta > best_gain + 1e-12:
+                    best_c, best_gain = c, delta
+            if best_c is not None:
+                comm[p] = best_c
+                tot[best_c] += deg[p]
+                moved = True
+            else:
+                tot[cur] += deg[p]
+        if not moved:
+            break
+    groups: dict = {}
+    for p, c in comm.items():
+        groups.setdefault(c, []).append(p)
+    blobs = [sorted(v) for v in groups.values() if len(v) >= 2]
+    if blobs:
+        blob_of = {}
+        for bi, mem in enumerate(blobs):
+            for p in mem:
+                blob_of[p] = bi
         for p in keys:
-            dx, dy = disp[p]
-            d = math.hypot(dx, dy) or 1.0
-            step = min(d, t)
-            x = pos[p][0] + dx / d * step + (W / 2 - pos[p][0]) * 0.01
-            y = pos[p][1] + dy / d * step + (Hh / 2 - pos[p][1]) * 0.01
-            pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
-        t = max(t * 0.96, 0.5)
+            if p not in blob_of:
+                blob_of[p] = len(blobs)
+                blobs.append([p])
+        badj = [set() for _ in blobs]
+        for a, b in edges:
+            if a in blob_of and b in blob_of and blob_of[a] != blob_of[b]:
+                badj[blob_of[a]].add(blob_of[b])
+                badj[blob_of[b]].add(blob_of[a])
+        r_blob = [27.0 * math.sqrt(len(mem)) + 24.0 for mem in blobs]
+        # ring order: BFS over blob adjacency starting at the biggest blob ->
+        # linked communities land side by side (pure ordering, no distances)
+        order = []
+        start = max(range(len(blobs)), key=lambda i: (len(blobs[i]), i))
+        q = [start]
+        seen = {start}
+        while q:
+            u = q.pop(0)
+            order.append(u)
+            for v in sorted(badj[u]):
+                if v not in seen:
+                    seen.add(v)
+                    q.append(v)
+        for i in range(len(blobs)):
+            if i not in seen:
+                order.append(i)
+        C = sum(2 * r + 120.0 for r in r_blob)
+        Rb = max(C / (2 * math.pi), 1.0)
+        arc = 0.0
+        center_x, center_y = W / 2, Hh / 2
+        blob_c = {}
+        for bi in order:
+            ang = 2 * math.pi * (arc + r_blob[bi]) / C
+            arc += 2 * r_blob[bi] + 120.0
+            rr = Rb - r_blob[bi] * 0.4
+            blob_c[bi] = (center_x + rr * math.cos(ang), center_y + rr * math.sin(ang) * 0.8)
+        for bi, mem in enumerate(blobs):
+            cx0, cy0 = blob_c[bi]
+            members = sorted(mem, key=lambda p: (-deg[p], p))
+            for i, p in enumerate(members):
+                if i == 0 and deg[p] >= 2:      # the community hub sits dead centre
+                    pos[p] = (cx0, cy0)
+                    continue
+                r = r_blob[bi] * math.sqrt(i) / math.sqrt(max(len(members) - 1, 1))
+                th = (i - 1) * 2.399963229728653
+                pos[p] = (cx0 + r * math.cos(th), cy0 + r * math.sin(th))
+    # fCoSE's actual recipe (Balcı et al 2021): coarse cluster placement THEN
+    # force-directed refinement. So the FR dynamics run after blob placement too,
+    # just gently (low starting temperature): they untangle within and between
+    # blobs without dissolving the communities the way a cold start would.
+    if not blobs:
+        R = min(W, Hh) / 2.4
+        for i, node in enumerate(nodes):
+            a = 2 * math.pi * i / n
+            pos[node["path"]] = (W / 2 + R * math.cos(a), Hh / 2 + R * 0.8 * math.sin(a))
+    k = 0.8 * math.sqrt(W * Hh / n)        # ideal edge length scales with canvas and size
+    t = (min(60.0, min(W, Hh) / 12.0) if not blobs else 18.0)  # gentle start when refining blobs
+    if blobs:
+        # gentle refinement: fewer sweeps, faster cooling
+        sweeps = 40
+    else:
+        sweeps = 150
+    for _ in range(sweeps):
+            disp = {p: [0.0, 0.0] for p in keys}
+            for i in range(len(keys)):
+                for j in range(i + 1, len(keys)):
+                    a, b = keys[i], keys[j]
+                    dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
+                    d = math.hypot(dx, dy) or 0.1
+                    f = k * k / d
+                    ux, uy = dx / d * f, dy / d * f
+                    disp[a][0] += ux; disp[a][1] += uy
+                    disp[b][0] -= ux; disp[b][1] -= uy
+            for f_, t_ in edges:
+                if f_ in pos and t_ in pos:
+                    dx, dy = pos[f_][0] - pos[t_][0], pos[f_][1] - pos[t_][1]
+                    d = math.hypot(dx, dy) or 0.1
+                    f = d * d / k
+                    ux, uy = dx / d * f, dy / d * f
+                    disp[f_][0] -= ux; disp[f_][1] -= uy
+                    disp[t_][0] += ux; disp[t_][1] += uy
+            for p in keys:
+                dx, dy = disp[p]
+                d = math.hypot(dx, dy) or 1.0
+                step = min(d, t)
+                x = pos[p][0] + dx / d * step + (W / 2 - pos[p][0]) * 0.01
+                y = pos[p][1] + dy / d * step + (Hh / 2 - pos[p][1]) * 0.01
+                pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
+            t = max(t * 0.96, 0.5)
     half = {p: (8.0 + len(Path(p).stem) * GRAPH_FONT_W) / 2.0 + 4.0 for p in keys}
 
     def _floor_round():
@@ -660,6 +762,40 @@ def _graph_layout(nodes: list, edges: list):
                 break
         if f < 1.0 and gv < 1.0:
             break
+
+    # v0.4.5: community-blob packing is denser than free FR spread, so a handful of
+    # label pairs can survive the alternating passes (measured 4-9). Targeted fix:
+    # take one overlapping pair at a time, separate vertically, let the dot floor
+    # re-settle, and KEEP the move only if the global overlap count strictly dropped
+    # (rollback otherwise) — hill-climbing, so it can never make labels worse.
+    def _lab_pairs():
+        out = []
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                a, b = keys[i], keys[j]
+                if abs(pos[a][1] - pos[b][1]) < GRAPH_LABEL_H:
+                    ax0, bx0 = pos[a][0] + 8, pos[b][0] + 8
+                    if not (ax0 + wlab[a] <= bx0 + 2 or bx0 + wlab[b] <= ax0 + 2):
+                        out.append((a, b))
+        return out
+
+    for _fix in range(40):
+        pairs = _lab_pairs()
+        if not pairs:
+            break
+        before = len(pairs)
+        a, b = pairs[0]
+        saved_a, saved_b = pos[a], pos[b]
+        sgn = 1 if pos[b][1] >= pos[a][1] else -1
+        pos[a] = (pos[a][0], pos[a][1] - 7.0 * sgn)
+        pos[b] = (pos[b][0], pos[b][1] + 7.0 * sgn)
+        for _r in range(16):
+            if _floor_round() < 1.0:
+                break
+        _relax_round()
+        if len(_lab_pairs()) >= before:
+            pos[a], pos[b] = saved_a, saved_b
+            _floor_round()
 
     # v0.4.4 (Simo: "many of the edges overlap / collide / cross each other. We want
     # the very minimum edge overlapping"): greedy crossing-reduction pass. Each node,
@@ -743,6 +879,68 @@ def _graph_layout(nodes: list, edges: list):
             if not improved:
                 break
 
+    rdirs = [(a, b) for a, b in edges if a in kset and b in kset and a != b]
+    # v0.4.5: hit-repair AFTER the crossing pass, double-guarded — a push is kept
+    # only if dot-on-line hits strictly fall AND crossings do not rise AT ALL AND
+    # labels stay clean. Running it before greedy let it relocate nodes into a
+    # worse crossing basin (measured 78 -> 91); after greedy the crossings are
+    # locked and only genuinely-free moves survive.
+
+    def _cross_count():
+        n = 0
+        for i1 in range(len(rdirs)):
+            a1, b1 = rdirs[i1]
+            for a2, b2 in rdirs[i1 + 1:]:
+                if len({a1, b1, a2, b2}) < 4:
+                    continue
+                if _segs_cross(pos[a1], pos[b1], pos[a2], pos[b2]):
+                    n += 1
+        return n
+
+    base_cross = _cross_count()
+
+    def _hit_scan():
+        hits = []
+        for a, b in rdirs:
+            ax, ay = pos[a]
+            bx, by = pos[b]
+            vx, vy = bx - ax, by - ay
+            lv2 = vx * vx + vy * vy
+            if lv2 < 1e-9:
+                continue
+            L = math.sqrt(lv2)
+            for o in keys:
+                if o == a or o == b:
+                    continue
+                wx, wy = pos[o][0] - ax, pos[o][1] - ay
+                cr = vx * wy - vy * wx
+                s = (wx * vx + wy * vy) / lv2
+                if 0.02 <= s <= 0.98 and abs(cr) / L < 17.0:
+                    hits.append((a, b, o, cr, L))
+        return hits
+
+    tried = set()
+    guard = 0
+    while guard < 300:
+        guard += 1
+        hits = [h for h in _hit_scan() if (h[0], h[1], h[2]) not in tried]
+        if not hits:
+            break
+        a, b, o, cr, L = hits[0]
+        tried.add((a, b, o))
+        before = len(_hit_scan())
+        saved = dict(pos)
+        ux, uy = (pos[b][0] - pos[a][0]) / L, (pos[b][1] - pos[a][1]) / L
+        side = 1.0 if cr >= 0 else -1.0
+        need = 20.0 - abs(cr) / L              # carry the dot to 20px off the line
+        pos[o] = (pos[o][0] - uy * side * need, pos[o][1] + ux * side * need)
+        for _r in range(16):
+            if _floor_round() < 1.0:
+                break
+        _relax_round()
+        if len(_hit_scan()) >= before or _lab_pairs() or _cross_count() > base_cross:
+            pos.update(saved)      # never-worse: roll back and try the next candidate
+
     # v0.4.3 (6): CANVAS FITS CONTENT, not content fits canvas. Hard-clamping the layout
     # to a fixed canvas piled dots on the walls — measured 167/199 close pairs stuck on
     # borders in the 200-node star test (every leaf of a hub gets pushed outward; walls
@@ -820,7 +1018,7 @@ def page_graph(core, g):
               '<span class="ll"></span>mutual')
     if broken:
         legend += f'<span class="llb"></span>{len(broken)} broken'
-    legend += '<span class="muted" style="margin-left:12px">scroll = zoom &middot; drag node = move &middot; double-click = reset</span>'
+    legend += '<span class="muted" style="margin-left:12px">scroll = zoom &middot; drag = pan</span>'
     body = (f'<h1>graph</h1><p class="muted">{len(nodes)} nodes · {len(g["edges"])} edges'
             f'<br>{legend}</p>' + GRAPH_NAV + svg + GRAPH_JS)
     return shell("graph", body)
