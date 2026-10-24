@@ -8,11 +8,12 @@ nodes spread and off the border.
 """
 import math
 import os
+import pathlib
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from views import page_graph  # noqa: E402
+from views import GRAPH_FONT_W, GRAPH_LABEL_H, page_graph  # noqa: E402
 
 W, Hh = 1000, 720  # canvas used by page_graph
 
@@ -30,6 +31,27 @@ def circles(svg):
     return [(int(a), int(b)) for a, b in re.findall(r'<circle cx="(\d+)" cy="(\d+)"', svg)]
 
 
+def long_stem_build(n=30):
+    """The failure Simo screenshotted: sibling raw-notes with long shared stems."""
+    words = ("infrastructure architecture sandbox runbook diagnostics maintainability "
+             "checkpoints").split()
+    nodes = [{"path": f"queries/note-{words[i % len(words)]}-{words[(i * 3) % len(words)]}-{i:02d}",
+              "title": f"N{i}"} for i in range(n)]
+    edges = [[nodes[i]["path"], nodes[(i + 1) % n]["path"]] for i in range(n)]
+    hub = nodes[0]["path"]
+    edges += [[nd["path"], hub] for nd in nodes[1:]]   # one dense cluster
+    return {"nodes": nodes, "edges": edges}
+
+
+def labeled(svg):
+    out = []
+    for blk in svg.split('<g class="node">')[1:]:
+        m = re.search(r'<circle cx="(\d+)" cy="(\d+)".*?<tspan>([^<]+)</tspan>', blk, re.S)
+        if m:
+            out.append((int(m[1]), int(m[2]), m[3]))
+    return out
+
+
 def main():
     g = build()
     svg = page_graph(None, g)
@@ -43,7 +65,37 @@ def main():
     assert close / total < 0.10, f"{close}/{total} node pairs closer than 20px"
     # determinism: same input, same layout
     assert circles(page_graph(None, build())) == pts, "layout not deterministic"
-    print(f"graph layout OK: {len(pts)} nodes spread, {border} on border")
+    # v0.4.3: labels (9px text right of the dot) must not print on top of each other
+    gl = labeled(page_graph(None, long_stem_build()))
+    assert len(gl) == 30, f"{len(gl)} labelled nodes, expected 30"
+    bad = sum(1 for i in range(len(gl)) for j in range(i + 1, len(gl))
+              if abs(gl[i][1] - gl[j][1]) < GRAPH_LABEL_H
+              and abs(gl[i][0] - gl[j][0]) < (len(gl[i][2]) + len(gl[j][2])) * GRAPH_FONT_W / 2.0 + 14)
+    tot = len(gl) * (len(gl) - 1) // 2
+    assert bad / tot < 0.01, f"{bad}/{tot} label boxes still overlap"
+    # v0.4.3: the whole node — dot AND label — must be a real link. The old markup had
+    # the cursor promise on the dot (which did nothing) and pointer-events:none on the
+    # label (which killed the only link): nodes looked clickable, were dead. (Simo, 2026-10-24)
+    assert svg.count('<g class="node"><a href="/view?path=') == len(pts), "dots are not clickable"
+    src = (pathlib.Path(__file__).resolve().parents[1] / "views.py").read_text(encoding="utf-8")
+    assert ".node text{fill:var(--fg);font-size:9px;pointer-events:none}" not in src, \
+        "the label click-killer is back"
+    # v0.4.3: robustness to growth — the graph only gets bigger (Simo). At ~3x the live
+    # size the canvas must grow and labels must still not print on each other.
+    big = long_stem_build(200)
+    svgb = page_graph(None, big)
+    vb = re.search(r'viewBox="0 0 1000 ([\d.]+)"', svgb)
+    assert vb and float(vb[1]) > 720, "canvas did not grow with the graph"
+    glb = labeled(svgb)
+    assert len(glb) == 200, f"{len(glb)} labelled nodes in the growth test, expected 200"
+    Hb = float(vb[1])
+    badb = sum(1 for i in range(len(glb)) for j in range(i + 1, len(glb))
+               if abs(glb[i][1] - glb[j][1]) < GRAPH_LABEL_H
+               and abs(glb[i][0] - glb[j][0]) < (len(glb[i][2]) + len(glb[j][2])) * GRAPH_FONT_W / 2.0 + 14)
+    totb = len(glb) * (len(glb) - 1) // 2
+    assert badb / totb < 0.01, f"growth test: {badb}/{totb} label boxes overlap at 200 nodes"
+    print(f"graph layout OK: {len(pts)} nodes spread, {border} on border, {bad}/{tot} label overlaps, "
+          f"growth 200 nodes: H={Hb:.0f} bad={badb}/{totb}")
 
 
 if __name__ == "__main__":

@@ -320,7 +320,7 @@ ul,ol{padding-left:1.4em}li{margin:.15em 0}li>p{margin:.3em 0}img{max-width:100%
 .muted{color:var(--dim)}
 table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--chip);color:var(--fg)}.tscroll{overflow-x:auto}
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
-.node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px;pointer-events:none}
+.node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
 """
 
@@ -438,22 +438,32 @@ def page_search(core, q):
     return shell(f'search: {terms}', body, terms)
 
 
-def page_graph(core, g):
-    nodes = [n for n in g["nodes"] if not n["path"].startswith("?")]
-    broken = [e for e in g["edges"] if str(e[1]).startswith("?")]
-    W, Hh, R = 1000, 720, 300
-    pos = {}
+GRAPH_FONT_W = 5.0    # ~px per glyph for the 9px sans the graph labels render in
+GRAPH_LABEL_H = 11.0  # vertical band a label occupies
+
+
+_LAYOUT_MEMO: dict = {}
+
+
+def _graph_layout(nodes: list, edges: list):
+    """Deterministic layout for one graph snapshot: Fruchterman-Reingold with cooling
+    plus a gentle centripetal pull (without it half the graph sticks to the clamp
+    border — measured 29/63 on the live wiki, 2026-10-24) and a label-box relaxation
+    pass (labels are 9px text 8px right of the dot; FR spaces dots, not labels — the
+    collision Simo screenshotted). v0.4.3: the wiki only grows, so the canvas scales
+    with the label area it must hold. Returns (W, Hh, pos)."""
+    W = 1000
     n = max(len(nodes), 1)
+    label_area = sum(8.0 + len(Path(nd["path"]).stem) * GRAPH_FONT_W for nd in nodes) * GRAPH_LABEL_H
+    Hh = min(max(720.0, label_area * 3.2 / W), 4000.0)
+    R = min(W, Hh) / 2.4
+    pos = {}
     for i, node in enumerate(nodes):
         a = 2 * math.pi * i / n
         pos[node["path"]] = (W / 2 + R * math.cos(a), Hh / 2 + R * 0.8 * math.sin(a))
-    # Fruchterman-Reingold with cooling: step-capped displacement + shrinking
-    # temperature. (The previous spring loop pulled with an uncapped quadratic
-    # term and no damping, so nodes overshot and stuck to the four corners of
-    # the clamp rectangle — the whole graph rendered as an X of 4 blobs.)
     keys = list(pos)
-    k = 100.0
-    t = 60.0
+    k = 0.8 * math.sqrt(W * Hh / n)        # ideal edge length scales with canvas and size
+    t = min(60.0, min(W, Hh) / 12.0)
     for _ in range(150):
         disp = {p: [0.0, 0.0] for p in keys}
         for i in range(len(keys)):
@@ -465,7 +475,7 @@ def page_graph(core, g):
                 ux, uy = dx / d * f, dy / d * f
                 disp[a][0] += ux; disp[a][1] += uy
                 disp[b][0] -= ux; disp[b][1] -= uy
-        for f_, t_ in g["edges"]:
+        for f_, t_ in edges:
             if f_ in pos and t_ in pos:
                 dx, dy = pos[f_][0] - pos[t_][0], pos[f_][1] - pos[t_][1]
                 d = math.hypot(dx, dy) or 0.1
@@ -477,9 +487,44 @@ def page_graph(core, g):
             dx, dy = disp[p]
             d = math.hypot(dx, dy) or 1.0
             step = min(d, t)
-            x, y = pos[p][0] + dx / d * step, pos[p][1] + dy / d * step
+            x = pos[p][0] + dx / d * step + (W / 2 - pos[p][0]) * 0.01
+            y = pos[p][1] + dy / d * step + (Hh / 2 - pos[p][1]) * 0.01
             pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
         t = max(t * 0.96, 0.5)
+    half = {p: (8.0 + len(Path(p).stem) * GRAPH_FONT_W) / 2.0 + 4.0 for p in keys}
+    for _ in range(80):
+        moved = 0.0
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                a, b = keys[i], keys[j]
+                dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
+                need = half[a] + half[b]
+                if abs(dy) < GRAPH_LABEL_H and abs(dx) < need:
+                    push = (need - abs(dx)) / 2.0 + 0.5
+                    s = 1.0 if dx >= 0 else -1.0
+                    pos[a] = (pos[a][0] + s * push, pos[a][1])
+                    pos[b] = (pos[b][0] - s * push, pos[b][1])
+                    moved += push
+        if moved < 1.0:
+            break
+    for p in keys:
+        x, y = pos[p]
+        pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
+    return W, Hh, pos
+
+
+def page_graph(core, g):
+    nodes = [n for n in g["nodes"] if not n["path"].startswith("?")]
+    broken = [e for e in g["edges"] if str(e[1]).startswith("?")]
+    # v0.4.3 (2): the page rebuilds per request and the graph only grows — memoize the
+    # deterministic layout by exact (paths, edges) content; the small cache is cleared
+    # wholesale when snapshots pile up, so memory stays bounded.
+    mkey = (tuple(nd["path"] for nd in nodes), tuple(tuple(e) for e in g["edges"]))
+    if mkey not in _LAYOUT_MEMO:
+        if len(_LAYOUT_MEMO) > 3:
+            _LAYOUT_MEMO.clear()
+        _LAYOUT_MEMO[mkey] = _graph_layout(nodes, g["edges"])
+    W, Hh, pos = _LAYOUT_MEMO[mkey]
     lines, circles = [], []
     for f_, t_ in g["edges"]:
         if f_ in pos and t_ in pos:
@@ -488,8 +533,8 @@ def page_graph(core, g):
     for nd in nodes:
         x, y = pos[nd["path"]]
         colour = "#58a6ff" if nd["path"].startswith("entities/") else ("#d29922" if nd["path"].startswith("concepts/") else ("#8b949e" if nd["path"].startswith("queries/") else "#3fb950"))
-        circles.append(f'<g class="node"><circle cx="{x:.0f}" cy="{y:.0f}" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
-                       f'<text x="{x + 8:.0f}" y="{y + 3:.0f}"><a href="/view?path={urlquote(nd["path"])}"><tspan>{esc(Path(nd["path"]).stem)}</tspan></a></text></g>')
+        circles.append(f'<g class="node"><a href="/view?path={urlquote(nd["path"])}"><circle cx="{x:.0f}" cy="{y:.0f}" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
+                       f'<text x="{x + 8:.0f}" y="{y + 3:.0f}"><tspan>{esc(Path(nd["path"]).stem)}</tspan></text></a></g>')
     svg = f'<svg viewBox="0 0 {W} {Hh}" xmlns="http://www.w3.org/2000/svg">{"".join(lines)}{"".join(circles)}</svg>'
     body = (f'<h1>graph</h1><p class="muted">{len(nodes)} nodes · {len(g["edges"])} edges · '
             f'blue entity · yellow concept · grey raw-note · green other{f" · {len(broken)} broken edges (dashed red)" if broken else ""}</p>' + svg)
