@@ -447,29 +447,39 @@ def page_graph(core, g):
     for i, node in enumerate(nodes):
         a = 2 * math.pi * i / n
         pos[node["path"]] = (W / 2 + R * math.cos(a), Hh / 2 + R * 0.8 * math.sin(a))
-    # 120 spring iterations
-    idx_by = {nd["path"]: i for i, nd in enumerate(nodes)}
-    for _ in range(120):
-        disp = {p: [0.0, 0.0] for p in pos}
-        keys = list(pos)
+    # Fruchterman-Reingold with cooling: step-capped displacement + shrinking
+    # temperature. (The previous spring loop pulled with an uncapped quadratic
+    # term and no damping, so nodes overshot and stuck to the four corners of
+    # the clamp rectangle — the whole graph rendered as an X of 4 blobs.)
+    keys = list(pos)
+    k = 100.0
+    t = 60.0
+    for _ in range(150):
+        disp = {p: [0.0, 0.0] for p in keys}
         for i in range(len(keys)):
             for j in range(i + 1, len(keys)):
                 a, b = keys[i], keys[j]
                 dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
-                d2 = max(dx * dx + dy * dy, 40)
-                f = 2600.0 / d2
-                disp[a][0] += dx * f; disp[a][1] += dy * f
-                disp[b][0] -= dx * f; disp[b][1] -= dy * f
+                d = math.hypot(dx, dy) or 0.1
+                f = k * k / d
+                ux, uy = dx / d * f, dy / d * f
+                disp[a][0] += ux; disp[a][1] += uy
+                disp[b][0] -= ux; disp[b][1] -= uy
         for f_, t_ in g["edges"]:
             if f_ in pos and t_ in pos:
                 dx, dy = pos[f_][0] - pos[t_][0], pos[f_][1] - pos[t_][1]
-                d = math.hypot(dx, dy) or 1
-                f = (d - 130) * 0.004
-                disp[f_][0] -= dx / d * f * d; disp[f_][1] -= dy / d * f * d
-                disp[t_][0] += dx / d * f * d; disp[t_][1] += dy / d * f * d
-        for p in pos:
-            x, y = pos[p][0] + disp[p][0], pos[p][1] + disp[p][1]
+                d = math.hypot(dx, dy) or 0.1
+                f = d * d / k
+                ux, uy = dx / d * f, dy / d * f
+                disp[f_][0] -= ux; disp[f_][1] -= uy
+                disp[t_][0] += ux; disp[t_][1] += uy
+        for p in keys:
+            dx, dy = disp[p]
+            d = math.hypot(dx, dy) or 1.0
+            step = min(d, t)
+            x, y = pos[p][0] + dx / d * step, pos[p][1] + dy / d * step
             pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
+        t = max(t * 0.96, 0.5)
     lines, circles = [], []
     for f_, t_ in g["edges"]:
         if f_ in pos and t_ in pos:
