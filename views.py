@@ -323,7 +323,7 @@ table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px soli
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
 i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#3d444d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
 #gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(> .gwrap.full){max-width:none;padding:18px 16px 40px}.egowrap{margin:8px 0 18px}.egowrap #gsvg{height:52vh;width:auto;max-width:100%;margin:0 auto}
-.gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;line-height:2;pointer-events:none}
+.pagewrap{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:30px;align-items:start}.pagewrap .prose{min-width:0}main:has(> .pagewrap){max-width:1240px}.pagerail{position:sticky;top:14px}.pagerail .side{border-top:none;padding-top:0;margin-top:0}.pagerail .egowrap #gsvg{height:min(52vh,340px)}@media(max-width:980px){.pagewrap{grid-template-columns:1fr}.pagerail{position:static}}.gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;line-height:2;pointer-events:none}
 .gnav button{min-width:38px;height:32px;padding:0 10px;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:15px;line-height:1;cursor:pointer}
 .gnav button:hover{border-color:var(--acc);color:var(--acc)}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
@@ -424,14 +424,23 @@ def page_view(core, q):
     # live. A ~500px canvas above the fold buried the actual content; serious
     # knowledge tools keep link context under the prose or in a side rail.
     ego = ego_block(core, rel)
+    links = (f'<h3>out links</h3><div>{out_h or "<span class=muted>none</span>"}</div>'
+             f'<h3>backlinks</h3><div>{in_h or "<span class=muted>none</span>"}</div>')
     if ego:
-        ego = "<h3>connections</h3>" + ego
-    body = (f"<h1>{esc(title)}</h1>" + _frontmatter_chips(fm)
-            + f'<p class="muted">{esc(rel)} · <a href="/page?path={urlquote(rel)}">raw</a></p>'
-            + _fix_links(text, lm)
-            + f'<div class="side">{ego}'
-              f'<h3>out links</h3><div>{out_h or "<span class=muted>none</span>"}</div>'
-              f'<h3>backlinks</h3><div>{in_h or "<span class=muted>none</span>"}</div></div>')
+        # layout revision 2 (Simo: "who said it has to be a single column?"): pages
+        # WITH a neighbourhood graph use a two-column grid — prose left, connections
+        # (graph + link lists) sticky in a right rail; under 900px it stacks and the
+        # connections fall below the prose, as before.
+        side = f'<aside class="pagerail"><div class="side"><h3>connections</h3>{ego}{links}</div></aside>'
+        body = (f"<h1>{esc(title)}</h1>"
+                + f'<div class="pagewrap"><div class="prose">' + _frontmatter_chips(fm)
+                + f'<p class="muted">{esc(rel)} · <a href="/page?path={urlquote(rel)}">raw</a></p>'
+                + _fix_links(text, lm) + "</div>" + side + "</div>")
+    else:
+        body = (f"<h1>{esc(title)}</h1>" + _frontmatter_chips(fm)
+                + f'<p class="muted">{esc(rel)} · <a href="/page?path={urlquote(rel)}">raw</a></p>'
+                + _fix_links(text, lm)
+                + f'<div class="side">{links}</div>')
     return shell(title, body)
 
 
