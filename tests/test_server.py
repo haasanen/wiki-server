@@ -257,7 +257,7 @@ def main():
         # the page's own node.
         beg = b
         check("page view embeds ego neighbourhood graph", '<svg id="gsvg"' in beg and 'class="egowrap"' in beg, beg[:120])
-        vme = re.search(r'<svg id="gsvg" viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"', beg)
+        vme = re.search(r'<svg id="gsvg"[^>]*viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"', beg)
         vx, vy, vw, vh = (map(float, vme.groups()) if vme else (0, 0, 0, 0))
         nbs = re.findall(r'<g class="node" data-i="\d+" transform="translate\(([-\d.]+),([-\d.]+)\)"><a href="/view\?path=([^"]+)"', beg)
         egon = [n for n in nbs if n[2].startswith("queries/q0")]
@@ -267,6 +267,10 @@ def main():
         s3, b3, _, _ = get_html("/view?path=queries/q0.md")
         check("ego graph is deterministic", b3 == beg)
         s4, b4, _, _ = get_html("/view?path=index.md")
+        ftier = re.search(r'<svg id="gsvg" style="font-size:([\d.]+)px', beg)
+        check("small graphs render a bigger label tier than the full graph",
+              ftier is not None and float(ftier.group(1)) >= 13.0,
+              "ego svg lacks font-size style" if ftier is None else ftier.group(1))
         check("index page (not a graph node) has no ego graph", '<svg id="gsvg"' not in b4, b4[:120])
         s5, b5, _, _ = get_html("/graph")
         check("/graph keeps the full-bleed wrapper", 'class="gwrap full"' in b5 and b5.count('<svg id="gsvg"') == 1)

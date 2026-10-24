@@ -303,10 +303,10 @@ def inline(s: str, link_map=None) -> str:
 
 CSS = """
 :root{color-scheme:dark;--bg:#0d1117;--fg:#c9d1d9;--dim:#8b949e;--acc:#58a6ff;--line:#30363d;--chip:#21262d}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 -apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}html{font-size:calc(100% + 0.25vw)}body{margin:0;background:var(--bg);color:var(--fg);font:1rem/1.6 -apple-system,"Segoe UI",Roboto,sans-serif}
 header{display:flex;gap:14px;align-items:center;padding:10px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
-header a{color:var(--acc);text-decoration:none}header b{font-size:15px}
-form{margin-left:auto;display:flex;gap:6px}input{background:var(--chip);border:1px solid var(--line);color:var(--fg);padding:5px 9px;border-radius:6px;min-width:220px}
+header a{color:var(--acc);text-decoration:none}header b{font-size:1.05rem}
+form{margin-left:auto;display:flex;gap:6px}input{background:var(--chip);border:1px solid var(--line);color:var(--fg);padding:5px 9px;border-radius:6px;min-width:14rem;font:inherit}
 main{max-width:900px;margin:0 auto;padding:22px 26px 60px}main p,main ul,main ol,main blockquote,main pre,main table,main h1,main h2,main h3,main .chips,.pagewrap .prose>*{max-width:66ch}a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 a.dead{color:#f85149}
 h1{font-size:1.9em;margin:.15em 0 .4em}h2{margin-top:1.4em;border-bottom:1px solid var(--line);padding-bottom:.2em}
@@ -314,19 +314,19 @@ code{background:var(--chip);padding:1px 5px;border-radius:4px;font:13px/1.5 ui-m
 pre{background:var(--chip);padding:12px;border-radius:8px;overflow-x:auto;border:1px solid var(--line)}pre code{background:none;padding:0}
 blockquote{border-left:3px solid var(--line);margin:1em 0;padding:.2em 1em;color:var(--dim)}
 ul,ol{padding-left:1.4em}li{margin:.15em 0}li>p{margin:.3em 0}img{max-width:100%}hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:.4em 0 1.2em}.chip{background:var(--chip);border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:1px 10px;font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:.4em 0 1.2em}.chip{background:var(--chip);border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:1px 10px;font-size:.75rem}
 .side{margin-top:2.5em;border-top:1px solid var(--line);padding-top:1em}.side h3{font-size:.85em;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
-.side a{display:inline-block;margin:2px 8px 2px 0;font-size:13px}
-.snip{color:var(--dim);font-size:13px;margin:.3em 0 0}
-.res{margin:1.1em 0}.res .path{color:var(--dim);font-size:12px}
+.side a{display:inline-block;margin:2px 8px 2px 0;font-size:.8rem}
+.snip{color:var(--dim);font-size:.8rem;margin:.3em 0 0}
+.res{margin:1.1em 0}.res .path{color:var(--dim);font-size:.75rem}
 .muted{color:var(--dim)}
-table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--chip);color:var(--fg)}.tscroll{overflow-x:auto}
+table{border-collapse:collapse;margin:1em 0;font-size:.8rem}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--chip);color:var(--fg)}.tscroll{overflow-x:auto}
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
-.node circle{cursor:pointer}.node text{fill:var(--fg);font-size:11px}.node text:hover,.node:hover text{fill:var(--acc)}
+.node circle{cursor:pointer}.node text{fill:var(--fg);font-size:inherit}.node text:hover,.node:hover text{fill:var(--acc)}
 i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#58626d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
-#gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(> .gwrap.full){max-width:none;padding:18px 16px 40px}.egowrap{margin:8px 0 18px}.egowrap #gsvg{height:52vh;width:auto;max-width:100%;margin:0 auto}
-.pagewrap{display:grid;grid-template-columns:minmax(0,66ch) 340px;gap:30px;align-items:start}.pagewrap .prose{min-width:0}main:has(> .pagewrap){max-width:1240px}.pagerail{position:sticky;top:14px}.pagerail .side{border-top:none;padding-top:0;margin-top:0}.egowrap .gwrap{display:flex;flex-direction:column}.egowrap .glegend{order:3;position:static;opacity:1;background:transparent;border:none;padding:8px 2px 0;pointer-events:auto}.pagerail .egowrap #gsvg{height:min(64vh,336px)}@media(max-width:980px){.pagewrap{grid-template-columns:1fr}.pagerail{position:static}}.gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:13px;line-height:2;pointer-events:none}
-.gnav button{min-width:38px;height:32px;padding:0 10px;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:15px;line-height:1;cursor:pointer}
+#gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(> .gwrap.full){max-width:none;padding:18px 16px 40px}.egowrap{margin:8px 0 18px}.egowrap #gsvg{width:100%;height:auto;max-width:44rem;margin:0 auto}
+.pagewrap{display:grid;grid-template-columns:minmax(0,66ch) min(26rem,34vw);gap:2rem;align-items:start}.pagewrap .prose{min-width:0}main:has(> .pagewrap){max-width:min(96vw,78rem)}.pagerail{position:sticky;top:1rem}.pagerail .side{border-top:none;padding-top:0;margin-top:0}.egowrap .gwrap{display:flex;flex-direction:column}.egowrap .glegend{order:3;position:static;opacity:1;background:transparent;border:none;padding:8px 2px 0;pointer-events:auto}.pagerail .egowrap #gsvg{width:100%;height:auto;max-height:70vh}@media(max-width:61.25em){.pagewrap{grid-template-columns:1fr}.pagerail{position:static}}.gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:.4rem .75rem;font-size:.8rem;line-height:2;pointer-events:none}
+.gnav button{min-width:2.5rem;height:2.1rem;padding:0 .6rem;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:1rem;line-height:1;cursor:pointer}
 .gnav button:hover{border-color:var(--acc);color:var(--acc)}a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:3px}
 .edge{stroke:#58626d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
 """
@@ -470,6 +470,13 @@ def page_search(core, q):
 
 GRAPH_FONT_W = 6.6    # ~px per glyph for the 11px sans the graph labels render in
 GRAPH_LABEL_H = 13.0  # vertical band a label occupies
+LABEL_CAP = 0         # max glyphs per label; 0 = no cap. Ego view caps (v0.4.9, Simo's
+                      # 4K screenshot: 20+ char stems force a 20+ char canvas, so the
+                      # canvas/label ratio - i.e. physical text size - can never rise).
+                      # The full stem stays in <title> and the linked page itself.
+
+def _lbl(stem):
+    return stem if not LABEL_CAP or len(stem) <= LABEL_CAP else stem[:LABEL_CAP - 1] + "\u2026"
 GRAPH_COLORS = {"entities": "#58a6ff", "concepts": "#d29922", "queries": "#8b949e", "other": "#3fb950"}
 
 
@@ -575,7 +582,7 @@ def _graph_layout(nodes: list, edges: list):
     with the label area it must hold. Returns (W, Hh, pos)."""
     W = 1000
     n = max(len(nodes), 1)
-    label_area = sum(8.0 + len(Path(nd["path"]).stem) * GRAPH_FONT_W for nd in nodes) * GRAPH_LABEL_H
+    label_area = sum(8.0 + len(_lbl(Path(nd["path"]).stem)) * GRAPH_FONT_W for nd in nodes) * GRAPH_LABEL_H
     Hh = min(max(720.0, label_area * 3.2 / W), 4000.0)
     pos = {}
     keys = [nd["path"] for nd in nodes]
@@ -726,7 +733,7 @@ def _graph_layout(nodes: list, edges: list):
                 y = pos[p][1] + dy / d * step + (Hh / 2 - pos[p][1]) * 0.01
                 pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
             t = max(t * 0.96, 0.5)
-    half = {p: (8.0 + len(Path(p).stem) * GRAPH_FONT_W) / 2.0 + 4.0 for p in keys}
+    half = {p: (8.0 + len(_lbl(Path(p).stem)) * GRAPH_FONT_W) / 2.0 + 4.0 for p in keys}
 
     def _floor_round():
         # v0.4.3 (6): minimum centre distance between DOTS (34px). FR's 1/d repulsion is
@@ -746,7 +753,7 @@ def _graph_layout(nodes: list, edges: list):
                     mv += push
         return mv
 
-    wlab = {p: len(Path(p).stem) * GRAPH_FONT_W for p in keys}  # label text width
+    wlab = {p: len(_lbl(Path(p).stem)) * GRAPH_FONT_W for p in keys}  # label text width
 
     def _relax_round():
         # v0.4.3 (6): labels hang RIGHT of their dot (x+8 .. x+8+width) — non-overlap
@@ -975,7 +982,7 @@ def _graph_layout(nodes: list, edges: list):
     # label ends 10px before the right edge. No walls -> no clamp wars.
     xs = [v[0] for v in pos.values()]
     ys = [v[1] for v in pos.values()]
-    reach = max(8.0 + len(Path(p).stem) * GRAPH_FONT_W for p in keys) + 10.0
+    reach = max(8.0 + len(_lbl(Path(p).stem)) * GRAPH_FONT_W for p in keys) + 10.0
     sx, sy = 30.0 - min(xs), 26.0 - min(ys)
     pos = {p: (p0[0] + sx, p0[1] + sy) for p, p0 in pos.items()}
     W = max(150.0, max(xs) + sx + reach)
@@ -995,7 +1002,13 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
     # deterministic layout by exact (paths, edges) content; the small cache is cleared
     # wholesale when snapshots pile up, so memory stays bounded. Ego blocks raised the
     # cap: one full graph + a handful of page neighbourhoods must not thrash it.
-    mkey = (tuple(nd["path"] for nd in nodes), tuple(tuple(e) for e in g["edges"]))
+    n = len(nodes)
+    tier = 11.0 if n >= 20 else round(min(16.0, 11.0 + (20 - n) * 0.35), 1)
+    cap = 16 if center_path else 0
+    mkey = (tuple(nd["path"] for nd in nodes), tuple(tuple(e) for e in g["edges"]), tier, cap)
+    global GRAPH_FONT_W, GRAPH_LABEL_H, LABEL_CAP
+    _fw0, _lh0, _cap0 = GRAPH_FONT_W, GRAPH_LABEL_H, LABEL_CAP
+    GRAPH_FONT_W, GRAPH_LABEL_H, LABEL_CAP = tier * 0.6, tier * 1.18, cap
     if mkey not in _LAYOUT_MEMO:
         if len(_LAYOUT_MEMO) > 8:
             _LAYOUT_MEMO.clear()
@@ -1004,7 +1017,7 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
     if center_path and center_path in pos:
         # ego-centred square canvas: covers every node + its label whichever side
         cx, cy = pos[center_path]
-        reach = max(len(Path(nd["path"]).stem) for nd in nodes) * GRAPH_FONT_W + 12
+        reach = max(len(_lbl(Path(nd["path"]).stem)) for nd in nodes) * GRAPH_FONT_W + 12
         R = reach
         for px, py in pos.values():
             R = max(R, abs(px - cx) + reach, abs(py - cy) + GRAPH_LABEL_H)
@@ -1038,7 +1051,7 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
         # v0.4.3 (5): a label is only a label if it fits — near the right edge it is
         # flipped to the left of the dot instead of being sliced off by the canvas
         # (Simo's screenshot: five truncated "note-ste..." fragments + an unreadable pile).
-        stem = esc(Path(nd["path"]).stem)
+        stem = esc(_lbl(Path(nd["path"]).stem))
         if x + 8 + len(stem) * GRAPH_FONT_W > vx + vw - 4:
             anchor, tx = ' text-anchor="end"', -8
         else:
@@ -1049,7 +1062,11 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
         # is not). Circle sits at 0,0; label offset is group-relative.
         circles.append(f'<g class="node" data-i="{i}" transform="translate({x:.0f},{y:.0f})"><a href="/view?path={urlquote(nd["path"])}"><circle cx="0" cy="0" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
                        f'<text{anchor} x="{tx}" y="3"><tspan>{stem}</tspan></text></a></g>')
-    svg = (f'<svg id="gsvg" viewBox="{vx:.0f} {vy:.0f} {vw:.0f} {vh:.0f}" xmlns="http://www.w3.org/2000/svg">'
+    st = f"font-size:{tier:g}px;"
+    if wrap_class == "gwrap full":  # contain-fit: fill BOTH viewport dimensions, never letterbox (v0.4.9)
+        st += f"width:min(100%,calc(88vh*{vw:.4f}/{vh:.4f}));"
+    GRAPH_FONT_W, GRAPH_LABEL_H, LABEL_CAP = _fw0, _lh0, _cap0
+    svg = (f'<svg id="gsvg" style="{st}" viewBox="{vx:.0f} {vy:.0f} {vw:.0f} {vh:.0f}" xmlns="http://www.w3.org/2000/svg">'
            f'{defs}{"".join(lines)}{"".join(circles)}</svg>')
     # v0.4.3 (4): a colour legend written in words ("blue entity") is a lazy legend — it
     # shows real swatches, sourced from the same GRAPH_COLORS the dots are painted with,
@@ -1076,7 +1093,7 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
     rows += f'<span class="ll"></span>mutual <span class="muted">{mutual}</span>'
     if broken:
         rows += f'<br><span class="llb"></span>broken <span class="muted">{len(broken)}</span>'
-    rows += '<div class="muted" style="font-size:11px">scroll = zoom &middot; drag = pan &middot; F = fit</div>'
+    rows += '<div class="muted" style="font-size:.7rem">scroll = zoom &middot; drag = pan &middot; F = fit</div>'
     return (f'<div class="{wrap_class}">{GRAPH_NAV}'
             f'<div class="glegend">{rows}</div>{svg}</div>' + GRAPH_JS)
 
