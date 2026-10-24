@@ -94,6 +94,22 @@ def main():
                and abs(glb[i][0] - glb[j][0]) < (len(glb[i][2]) + len(glb[j][2])) * GRAPH_FONT_W / 2.0 + 14)
     totb = len(glb) * (len(glb) - 1) // 2
     assert badb / totb < 0.01, f"growth test: {badb}/{totb} label boxes overlap at 200 nodes"
+    # v0.4.3: directionality (Simo's spec) — one-way links get an arrowhead, mutual pairs
+    # stay plain lines; the arrow tip must stop at the target dot's rim, not its centre.
+    dg = {"nodes": [{"path": p, "title": ""} for p in
+                    ("entities/alpha", "entities/beta", "entities/gamma")],
+          "edges": [["entities/alpha", "entities/beta"], ["entities/beta", "entities/alpha"],
+                    ["entities/gamma", "entities/alpha"]]}
+    dgsvg = page_graph(None, dg)
+    assert dgsvg.count("<line") == 3, "one line per edge entry"
+    assert dgsvg.count('marker-end="url(#ah)"') == 1, "exactly one arrowhead (the one-way edge)"
+    assert '<marker id="ah"' in dgsvg, "the arrow marker is undefined"
+    gp = {s: (x, y) for x, y, s in labeled(dgsvg)}
+    m = re.search(r'x1="(\d+)" y1="(\d+)" x2="(\d+)" y2="(\d+)" marker-end', dgsvg)
+    x1, y1, x2, y2 = map(int, m.groups())
+    assert (x1, y1) == gp["gamma"], "the arrow belongs on the one-way edge, at its source"
+    assert abs(math.hypot(x2 - gp["alpha"][0], y2 - gp["alpha"][1]) - 8) <= 1, \
+        "arrow tip must stop at the target dot's rim (r=6+2)"
     print(f"graph layout OK: {len(pts)} nodes spread, {border} on border, {bad}/{tot} label overlaps, "
           f"growth 200 nodes: H={Hb:.0f} bad={badb}/{totb}")
 

@@ -526,18 +526,32 @@ def page_graph(core, g):
         _LAYOUT_MEMO[mkey] = _graph_layout(nodes, g["edges"])
     W, Hh, pos = _LAYOUT_MEMO[mkey]
     lines, circles = [], []
+    # v0.4.3 (3): links are directional (a's page contains [[b]]) — one-way edges get an
+    # arrowhead at the target, mutual pairs stay plain lines (Simo's spec). The line ends
+    # at the dot's rim so the arrowhead isn't buried under the node.
+    eset = {(f_, t_) for f_, t_ in g["edges"]}
     for f_, t_ in g["edges"]:
         if f_ in pos and t_ in pos:
+            (x1, y1), (x2, y2) = pos[f_], pos[t_]
             cls = "edge"
-            lines.append(f'<line class="{cls}" x1="{pos[f_][0]:.0f}" y1="{pos[f_][1]:.0f}" x2="{pos[t_][0]:.0f}" y2="{pos[t_][1]:.0f}"/>')
+            if (t_, f_) in eset:
+                lines.append(f'<line class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}"/>')
+            else:
+                dx, dy = x2 - x1, y2 - y1
+                dd = math.hypot(dx, dy) or 1.0
+                ex, ey = x2 - dx / dd * 8.0, y2 - dy / dd * 8.0
+                lines.append(f'<line class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{ex:.0f}" y2="{ey:.0f}" marker-end="url(#ah)"/>')
+    defs = ('<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
+            'markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#3d444d"/></marker></defs>')
     for nd in nodes:
         x, y = pos[nd["path"]]
         colour = "#58a6ff" if nd["path"].startswith("entities/") else ("#d29922" if nd["path"].startswith("concepts/") else ("#8b949e" if nd["path"].startswith("queries/") else "#3fb950"))
         circles.append(f'<g class="node"><a href="/view?path={urlquote(nd["path"])}"><circle cx="{x:.0f}" cy="{y:.0f}" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
                        f'<text x="{x + 8:.0f}" y="{y + 3:.0f}"><tspan>{esc(Path(nd["path"]).stem)}</tspan></text></a></g>')
-    svg = f'<svg viewBox="0 0 {W} {Hh}" xmlns="http://www.w3.org/2000/svg">{"".join(lines)}{"".join(circles)}</svg>'
+    svg = f'<svg viewBox="0 0 {W} {Hh}" xmlns="http://www.w3.org/2000/svg">{defs}{"".join(lines)}{"".join(circles)}</svg>'
     body = (f'<h1>graph</h1><p class="muted">{len(nodes)} nodes · {len(g["edges"])} edges · '
-            f'blue entity · yellow concept · grey raw-note · green other{f" · {len(broken)} broken edges (dashed red)" if broken else ""}</p>' + svg)
+            f'blue entity · yellow concept · grey raw-note · green other · arrowhead = one-way link'
+            f'{f" · {len(broken)} broken edges (dashed red)" if broken else ""}</p>' + svg)
     return shell("graph", body)
 
 
