@@ -261,12 +261,16 @@ def update_index(rel: str, text: str, *, remove: bool = False) -> None:
             cur = "# Wiki Index\n"
         stem = Path(rel).stem
         lines = cur.splitlines()
-        at = next((i for i, l in enumerate(lines) if f"[[{stem}]]" in l and l.strip().startswith("- ")), None)
+        matches = [i for i, l in enumerate(lines) if l.strip().startswith(f"- [[{stem}]]")]
+        at = matches[0] if matches else None
         if remove:
-            if at is not None:
-                del lines[at]
+            for i in reversed(matches):
+                del lines[i]
+            if matches:
                 atomic_write(idx, "\n".join(lines).rstrip() + "\n")
             return
+        for i in reversed(matches[1:]):
+            del lines[i]                 # self-heal historical duplicate lines
         new = index_line_for(rel, text)
         if at is None:
             header = f"## {SECTION[rel.split('/', 1)[0]]}"
