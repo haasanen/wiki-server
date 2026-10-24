@@ -15,7 +15,41 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from views import GRAPH_COLORS, GRAPH_FONT_W, GRAPH_LABEL_H, page_graph  # noqa: E402
 
-W, Hh = 1000, 720  # canvas used by page_graph
+W, Hh = 1000, 720  # canvas BEFORE the layout grows it (v0.4.3(6): canvas fits content)
+
+
+def canvas(svg):
+    m = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
+    return float(m.group(1)), float(m.group(2))
+
+
+def lab_over(entries):
+    """exact right-hanging label box overlaps (text x is the box left edge; a flipped
+    label cannot exist once the canvas grows to fit — proven by edge_clip == 0)"""
+    n = 0
+    for i in range(len(entries)):
+        for j in range(i + 1, len(entries)):
+            x1, y1, t1 = entries[i]
+            x2, y2, t2 = entries[j]
+            if abs(y1 - y2) < GRAPH_LABEL_H:
+                w1 = len(t1) * GRAPH_FONT_W
+                w2 = len(t2) * GRAPH_FONT_W
+                if not (x1 + w1 <= x2 + 2 or x2 + w2 <= x1 + 2):
+                    n += 1
+    return n
+
+
+def edge_clip(svg):
+    """labels crossing the canvas edge — with flip + grown canvas this must be zero"""
+    Wc, _ = canvas(svg)
+    n = 0
+    for m in re.finditer(r'<text([^>]*)x="([-\d.]+)" y="[-\d.]+"><tspan>([^<]+)</tspan>', svg):
+        end, x, t = "text-anchor" in m.group(1), float(m.group(2)), m.group(3)
+        w = len(t) * GRAPH_FONT_W
+        x0, x1 = (x - w, x) if end else (x, x + w)
+        if x0 < 0 or x1 > Wc:
+            n += 1
+    return n
 
 
 def build(n=40):
@@ -57,20 +91,23 @@ def main():
     svg = page_graph(None, g)
     pts = circles(svg)
     assert len(pts) == len(g["nodes"]), f"{len(pts)} circles for {len(g['nodes'])} nodes"
-    border = sum(1 for x, y in pts if x <= 41 or x >= W - 40 or y <= 41 or y >= Hh - 29)
-    assert border / len(pts) < 0.30, f"{border}/{len(pts)} nodes stuck on the clamp border"
+    Wc, Hc = canvas(svg)
+    assert Wc >= 1000 and Hc >= 720, "canvas must never be smaller than the base"
+    border = sum(1 for x, y in pts if x <= 31 or y <= 27 or y >= Hc - 21)
+    assert border / len(pts) < 0.30, f"{border}/{len(pts)} nodes pinned at a canvas edge"
+    assert edge_clip(svg) == 0, "labels cross the canvas edge"
     close = sum(1 for i in range(len(pts)) for j in range(i + 1, len(pts))
-                if math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < 20)
+                if math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < 30)
     total = len(pts) * (len(pts) - 1) // 2
-    assert close / total < 0.10, f"{close}/{total} node pairs closer than 20px"
+    # v0.4.3 (6): explicit minimum-distance floor (34px) — FR alone left 48/1953 real-graph
+    # pairs under 60px, min 19px; that is what "nodes still overlapping" looked like. (Simo)
+    assert close == 0, f"{close}/{total} node pairs closer than 30px"
     # determinism: same input, same layout
     assert circles(page_graph(None, build())) == pts, "layout not deterministic"
     # v0.4.3: labels (9px text right of the dot) must not print on top of each other
     gl = labeled(page_graph(None, long_stem_build()))
     assert len(gl) == 30, f"{len(gl)} labelled nodes, expected 30"
-    bad = sum(1 for i in range(len(gl)) for j in range(i + 1, len(gl))
-              if abs(gl[i][1] - gl[j][1]) < GRAPH_LABEL_H
-              and abs(gl[i][0] - gl[j][0]) < (len(gl[i][2]) + len(gl[j][2])) * GRAPH_FONT_W / 2.0 + 14)
+    bad = lab_over(gl)
     tot = len(gl) * (len(gl) - 1) // 2
     assert bad / tot < 0.01, f"{bad}/{tot} label boxes still overlap"
     # v0.4.3: the whole node — dot AND label — must be a real link. The old markup had
@@ -84,16 +121,19 @@ def main():
     # size the canvas must grow and labels must still not print on each other.
     big = long_stem_build(200)
     svgb = page_graph(None, big)
-    vb = re.search(r'viewBox="0 0 1000 ([\d.]+)"', svgb)
-    assert vb and float(vb[1]) > 720, "canvas did not grow with the graph"
+    Wb, Hb = canvas(svgb)
+    assert Wb > 1000 or Hb > 720, "canvas did not grow with the graph"
+    ptsb = circles(svgb)
+    closeb = sum(1 for i in range(len(ptsb)) for j in range(i + 1, len(ptsb))
+                 if math.hypot(ptsb[i][0] - ptsb[j][0], ptsb[i][1] - ptsb[j][1]) < 30)
+    totb2 = len(ptsb) * (len(ptsb) - 1) // 2
+    assert closeb / totb2 < 0.01, f"growth: {closeb}/{totb2} dot pairs closer than 30px"
+    assert edge_clip(svgb) == 0, "growth: labels cross the canvas edge"
     glb = labeled(svgb)
     assert len(glb) == 200, f"{len(glb)} labelled nodes in the growth test, expected 200"
-    Hb = float(vb[1])
-    badb = sum(1 for i in range(len(glb)) for j in range(i + 1, len(glb))
-               if abs(glb[i][1] - glb[j][1]) < GRAPH_LABEL_H
-               and abs(glb[i][0] - glb[j][0]) < (len(glb[i][2]) + len(glb[j][2])) * GRAPH_FONT_W / 2.0 + 14)
+    badb = lab_over(glb)
     totb = len(glb) * (len(glb) - 1) // 2
-    assert badb / totb < 0.01, f"growth test: {badb}/{totb} label boxes overlap at 200 nodes"
+    assert badb / totb < 0.01, f"growth: {badb}/{totb} label boxes overlap at 200 nodes"
     # v0.4.3: directionality (Simo's spec) — one-way links get an arrowhead, mutual pairs
     # stay plain lines; the arrow tip must stop at the target dot's rim, not its centre.
     dg = {"nodes": [{"path": p, "title": ""} for p in

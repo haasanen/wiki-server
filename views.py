@@ -439,7 +439,7 @@ def page_search(core, q):
     return shell(f'search: {terms}', body, terms)
 
 
-GRAPH_FONT_W = 5.0    # ~px per glyph for the 9px sans the graph labels render in
+GRAPH_FONT_W = 5.4    # ~px per glyph for the 9px sans the graph labels render in
 GRAPH_LABEL_H = 11.0  # vertical band a label occupies
 GRAPH_COLORS = {"entities": "#58a6ff", "concepts": "#d29922", "queries": "#8b949e", "other": "#3fb950"}
 
@@ -501,24 +501,81 @@ def _graph_layout(nodes: list, edges: list):
             pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
         t = max(t * 0.96, 0.5)
     half = {p: (8.0 + len(Path(p).stem) * GRAPH_FONT_W) / 2.0 + 4.0 for p in keys}
-    for _ in range(80):
-        moved = 0.0
+
+    def _floor_round():
+        # v0.4.3 (6): minimum centre distance between DOTS (34px). FR's 1/d repulsion is
+        # too weak close up — measured 48/1953 real-graph pairs under 60px, min 19px;
+        # that is what "some of the nodes are still overlapping" really was (Simo).
+        mv = 0.0
         for i in range(len(keys)):
             for j in range(i + 1, len(keys)):
                 a, b = keys[i], keys[j]
                 dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
-                need = half[a] + half[b]
-                if abs(dy) < GRAPH_LABEL_H and abs(dx) < need:
-                    push = (need - abs(dx)) / 2.0 + 0.5
-                    s = 1.0 if dx >= 0 else -1.0
-                    pos[a] = (pos[a][0] + s * push, pos[a][1])
-                    pos[b] = (pos[b][0] - s * push, pos[b][1])
-                    moved += push
-        if moved < 1.0:
+                d = math.hypot(dx, dy)
+                if d < 34.0:
+                    push = (34.0 - d) / 2.0 + 0.5
+                    ux, uy = (dx / d, dy / d) if d > 0.01 else (0.707, 0.707)
+                    pos[a] = (pos[a][0] + ux * push, pos[a][1] + uy * push)
+                    pos[b] = (pos[b][0] - ux * push, pos[b][1] - uy * push)
+                    mv += push
+        return mv
+
+    wlab = {p: len(Path(p).stem) * GRAPH_FONT_W for p in keys}  # label text width
+
+    def _relax_round():
+        # v0.4.3 (6): labels hang RIGHT of their dot (x+8 .. x+8+width) — non-overlap
+        # is ASYMMETRIC: needs dx >= width(b) or dx <= -width(a), not the symmetric
+        # half-width model (which under-pushed short-vs-long pairs: 5 label overlaps
+        # survived it on the real graph).
+        mv = 0.0
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                a, b = keys[i], keys[j]
+                dx = pos[a][0] - pos[b][0]
+                dy = pos[a][1] - pos[b][1]
+                if abs(dy) < GRAPH_LABEL_H:
+                    if 0.0 <= dx < wlab[b] + 6.0:
+                        push = (wlab[b] + 6.0 - dx) / 2.0 + 0.5
+                        pos[a] = (pos[a][0] + push, pos[a][1])
+                        pos[b] = (pos[b][0] - push, pos[b][1])
+                        mv += push
+                    elif -wlab[a] - 6.0 < dx < 0.0:
+                        push = (wlab[a] + 6.0 + dx) / 2.0 + 0.5
+                        pos[a] = (pos[a][0] - push, pos[a][1])
+                        pos[b] = (pos[b][0] + push, pos[b][1])
+                        mv += push
+        return mv
+
+    # alternate until stable: dot spacing can re-overlap labels, label spreading moves
+    # dots (never closer, but the floor gets the last word on dot distance)
+    for _ in range(6):
+        f = 0.0
+        for _ in range(24):  # 200-node chains need many rounds to settle
+            r = _floor_round()
+            f += r
+            if r < 1.0:
+                break
+        gv = 0.0
+        for _ in range(40):
+            r = _relax_round()
+            gv += r
+            if r < 1.0:
+                break
+        if f < 1.0 and gv < 1.0:
             break
-    for p in keys:
-        x, y = pos[p]
-        pos[p] = (min(max(x, 40), W - 40), min(max(y, 40), Hh - 30))
+
+    # v0.4.3 (6): CANVAS FITS CONTENT, not content fits canvas. Hard-clamping the layout
+    # to a fixed canvas piled dots on the walls — measured 167/199 close pairs stuck on
+    # borders in the 200-node star test (every leaf of a hub gets pushed outward; walls
+    # cannot hold them). So: translate into positive space and grow W/H until the widest
+    # label ends 10px before the right edge. No walls -> no clamp wars.
+    xs = [v[0] for v in pos.values()]
+    ys = [v[1] for v in pos.values()]
+    reach = max(8.0 + len(Path(p).stem) * GRAPH_FONT_W for p in keys) + 10.0
+    sx, sy = 30.0 - min(xs), 26.0 - min(ys)
+    pos = {p: (p0[0] + sx, p0[1] + sy) for p, p0 in pos.items()}
+    W = max(W, max(xs) + sx + reach)
+    Hh = max(Hh, max(ys) + sy + 34.0)
     return W, Hh, pos
 
 
@@ -555,9 +612,17 @@ def page_graph(core, g):
     for nd in nodes:
         x, y = pos[nd["path"]]
         colour = _node_colour(nd["path"])
+        # v0.4.3 (5): a label is only a label if it fits — near the right edge it is
+        # flipped to the left of the dot instead of being sliced off by the canvas
+        # (Simo's screenshot: five truncated "note-ste..." fragments + an unreadable pile).
+        stem = esc(Path(nd["path"]).stem)
+        if x + 8 + len(stem) * GRAPH_FONT_W > W - 4:
+            anchor, tx = ' text-anchor="end"', x - 8
+        else:
+            anchor, tx = "", x + 8
         circles.append(f'<g class="node"><a href="/view?path={urlquote(nd["path"])}"><circle cx="{x:.0f}" cy="{y:.0f}" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
-                       f'<text x="{x + 8:.0f}" y="{y + 3:.0f}"><tspan>{esc(Path(nd["path"]).stem)}</tspan></text></a></g>')
-    svg = f'<svg viewBox="0 0 {W} {Hh}" xmlns="http://www.w3.org/2000/svg">{defs}{"".join(lines)}{"".join(circles)}</svg>'
+                       f'<text{anchor} x="{tx:.0f}" y="{y + 3:.0f}"><tspan>{stem}</tspan></text></a></g>')
+    svg = f'<svg viewBox="0 0 {W:.0f} {Hh:.0f}" xmlns="http://www.w3.org/2000/svg">{defs}{"".join(lines)}{"".join(circles)}</svg>'
     # v0.4.3 (4): a colour legend written in words ("blue entity") is a lazy legend — it
     # shows real swatches, sourced from the same GRAPH_COLORS the dots are painted with,
     # plus line samples for one-way (arrowed) vs mutual, so nothing can drift apart. (Simo)
