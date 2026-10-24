@@ -322,7 +322,7 @@ table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px soli
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
 i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#3d444d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
-#gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(> .gwrap.full){max-width:none;padding:18px 16px 40px}.egowrap{margin:2px 0 26px}.egowrap #gsvg{height:52vh;width:auto;max-width:100%;margin:0 auto}
+#gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(> .gwrap.full){max-width:none;padding:18px 16px 40px}.egowrap{margin:8px 0 18px}.egowrap #gsvg{height:52vh;width:auto;max-width:100%;margin:0 auto}
 .gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;line-height:2;pointer-events:none}
 .gnav button{min-width:38px;height:32px;padding:0 10px;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:15px;line-height:1;cursor:pointer}
 .gnav button:hover{border-color:var(--acc);color:var(--acc)}
@@ -418,11 +418,19 @@ def page_view(core, q):
     for x in nb["out"]:
         if x not in lm and "/" in x:
             in_h = in_h  # broken out edges already dead-classed in body
+    # placement revision (Simo asked whether top-of-page was ideal — it is not): the
+    # prose is the page's primary content, so the neighbourhood graph goes BELOW it,
+    # merged into the connections section where the out-links/backlinks lists already
+    # live. A ~500px canvas above the fold buried the actual content; serious
+    # knowledge tools keep link context under the prose or in a side rail.
+    ego = ego_block(core, rel)
+    if ego:
+        ego = "<h3>connections</h3>" + ego
     body = (f"<h1>{esc(title)}</h1>" + _frontmatter_chips(fm)
             + f'<p class="muted">{esc(rel)} · <a href="/page?path={urlquote(rel)}">raw</a></p>'
-            + ego_block(core, rel)
             + _fix_links(text, lm)
-            + f'<div class="side"><h3>out links</h3><div>{out_h or "<span class=muted>none</span>"}</div>'
+            + f'<div class="side">{ego}'
+              f'<h3>out links</h3><div>{out_h or "<span class=muted>none</span>"}</div>'
               f'<h3>backlinks</h3><div>{in_h or "<span class=muted>none</span>"}</div></div>')
     return shell(title, body)
 

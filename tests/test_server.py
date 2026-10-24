@@ -270,6 +270,14 @@ def main():
         check("index page (not a graph node) has no ego graph", '<svg id="gsvg"' not in b4, b4[:120])
         s5, b5, _, _ = get_html("/graph")
         check("/graph keeps the full-bleed wrapper", 'class="gwrap full"' in b5 and b5.count('<svg id="gsvg"') == 1)
+
+        # placement contract (Simo questioned top-of-page): the neighbourhood graph
+        # sits BELOW the prose, inside the connections section, ahead of the
+        # out-links/backlists lists — never above the page's own content.
+        check("ego graph sits below the prose, above the link lists",
+              beg.find("Query answer") < beg.find('class="egowrap"') < beg.find("<h3>out links</h3>")
+              and beg.find('<h1>') < beg.find('class="egowrap"'),
+              f'prose={beg.find("Query answer")} ego={beg.find(chr(34)+"egowrap"+chr(34))} lists={beg.find("<h3>out links</h3>")}')
         # task checkboxes + strikethrough render as glyphs, not raw [ ] / ~~
         req("POST", "/page", {"path": "queries/tasks", "content": page("tasks", "Tasks", "- [ ] todo item here\n- [x] done item here\n- ~~struck~~ text\n", ["alpha", "beta"], typ="query")})
         s, b, ct, cc = get_html("/view?path=queries/tasks.md")
