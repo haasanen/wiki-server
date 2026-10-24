@@ -82,9 +82,9 @@ html = views.md_to_html(MD, LM)
 compact = re.sub(r"\s+", " ", html) if False else " ".join(html.split())
 
 EXPECTED = [
-    ("ATX h1", "<h1>H1</h1>"),
+    ("ATX h1 -> h2 (one h1 per page: chrome owns it)", "<h2>H1</h2>"),
     ("ATX h2 + bold + trailing hashes", "<h2>H2 <strong>bold</strong></h2>"),
-    ("setext h1", "<h1>Setext H1</h1>"),
+    ("setext h1 -> h2 (same rule)", "<h2>Setext H1</h2>"),
     ("setext h2", "<h2>Setext H2</h2>"),
     ("soft break joins para", "<p>para one line1 line2 same para</p>"),
     ("hard break", "here<br>next line after break"),

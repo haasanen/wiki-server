@@ -80,7 +80,7 @@ def _blocks(lines, lm):
         # setext heading: previous paragraph + ==== / ---- underline
         if para and re.match(r"^=+ *$", s):
             txt = " ".join(para); para = []
-            out.append("<h1>" + inline(txt, lm) + "</h1>"); i += 1; continue
+            out.append("<h2>" + inline(txt, lm) + "</h2>"); i += 1; continue
         if para and set(s) == {"-"}:      # any run of dashes under a para = setext h2
             txt = " ".join(para); para = []
             out.append("<h2>" + inline(txt, lm) + "</h2>"); i += 1; continue
@@ -88,6 +88,8 @@ def _blocks(lines, lm):
         if m:
             flush()
             lvl = len(m.group(1))
+            # design: one h1 per page (the chrome title); markdown # renders as h2
+            lvl = 2 if lvl == 1 else lvl
             out.append("<h%d>%s</h%d>" % (lvl, inline(m.group(2), lm), lvl))
             i += 1
             continue
@@ -305,7 +307,7 @@ CSS = """
 header{display:flex;gap:14px;align-items:center;padding:10px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
 header a{color:var(--acc);text-decoration:none}header b{font-size:15px}
 form{margin-left:auto;display:flex;gap:6px}input{background:var(--chip);border:1px solid var(--line);color:var(--fg);padding:5px 9px;border-radius:6px;min-width:220px}
-main{max-width:900px;margin:0 auto;padding:22px 26px 60px}a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+main{max-width:900px;margin:0 auto;padding:22px 26px 60px}main p,main ul,main ol,main blockquote,main pre,main table,main h1,main h2,main h3,main .chips,.pagewrap .prose>*{max-width:66ch}a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 a.dead{color:#f85149}
 h1{font-size:1.7em;margin:.2em 0 .4em}h2{margin-top:1.4em;border-bottom:1px solid var(--line);padding-bottom:.2em}
 code{background:var(--chip);padding:1px 5px;border-radius:4px;font:13px/1.5 ui-monospace,Consolas,monospace}
@@ -321,13 +323,18 @@ ul,ol{padding-left:1.4em}li{margin:.15em 0}li>p{margin:.3em 0}img{max-width:100%
 table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--chip);color:var(--fg)}.tscroll{overflow-x:auto}
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
-i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#3d444d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
+i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#58626d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
 #gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(> .gwrap.full){max-width:none;padding:18px 16px 40px}.egowrap{margin:8px 0 18px}.egowrap #gsvg{height:52vh;width:auto;max-width:100%;margin:0 auto}
-.pagewrap{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:30px;align-items:start}.pagewrap .prose{min-width:0}main:has(> .pagewrap){max-width:1240px}.pagerail{position:sticky;top:14px}.pagerail .side{border-top:none;padding-top:0;margin-top:0}.pagerail .egowrap #gsvg{height:min(52vh,340px)}@media(max-width:980px){.pagewrap{grid-template-columns:1fr}.pagerail{position:static}}.gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;line-height:2;pointer-events:none}
+.pagewrap{display:grid;grid-template-columns:minmax(0,66ch) 300px;gap:30px;align-items:start}.pagewrap .prose{min-width:0}main:has(> .pagewrap){max-width:1240px}.pagerail{position:sticky;top:14px}.pagerail .side{border-top:none;padding-top:0;margin-top:0}.pagerail .glegend{opacity:0;transition:opacity .15s ease}.pagerail .gwrap:hover .glegend{opacity:1}.pagerail .egowrap #gsvg{height:min(52vh,292px)}@media(max-width:980px){.pagewrap{grid-template-columns:1fr}.pagerail{position:static}}.gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;line-height:2;pointer-events:none}
 .gnav button{min-width:38px;height:32px;padding:0 10px;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:15px;line-height:1;cursor:pointer}
-.gnav button:hover{border-color:var(--acc);color:var(--acc)}
-.edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
+.gnav button:hover{border-color:var(--acc);color:var(--acc)}a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:3px}
+.edge{stroke:#58626d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
 """
+
+SHELL_JS = ('<script>document.addEventListener("keydown",function(e){'
+            'if(e.key==="/"&&!/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){'
+            'e.preventDefault();var s=document.getElementById("sq");if(s)s.focus();}});</script>')
+
 
 def shell(title: str, body: str, q: str = "") -> str:
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
@@ -335,8 +342,8 @@ def shell(title: str, body: str, q: str = "") -> str:
 <title>{esc(title)} — wiki</title><style>{CSS}</style></head><body>
 <header><b><a href="/">wiki</a></b>
 <a href="/schema">schema</a><a href="/log">log</a><a href="/graph">graph</a><a href="/lint">lint</a><a href="/help">api</a>
-<form action="/search" method="get"><input name="q" placeholder="search…" value="{esc(q)}" autofocus></form>
-</header><main>{body}</main></body></html>"""
+<form action="/search" method="get"><input id="sq" name="q" placeholder="search… (press /)" value="{esc(q)}" autofocus></form>
+</header><main>{body}</main>{SHELL_JS}</body></html>"""
 
 
 # ---------- views -----------------------------------------------------------
@@ -1024,7 +1031,7 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
                 ex, ey = x2 - dx / dd * 8.0, y2 - dy / dd * 8.0
                 lines.append(f'<line {data}class="{cls}" x1="{x1:.0f}" y1="{y1:.0f}" x2="{ex:.0f}" y2="{ey:.0f}" marker-end="url(#ah)"/>')
     defs = ('<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
-            'markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#3d444d"/></marker></defs>')
+            'markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#58626d"/></marker></defs>')
     for nd in nodes:
         x, y = pos[nd["path"]]
         colour = _node_colour(nd["path"])
@@ -1064,8 +1071,8 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
         n = counts.get(col, 0)
         if n:
             rows += f'{sw(col)}{label} <span class="muted">{n}</span><br>'
-    rows += ('<svg width="20" height="10" class="lgs"><line x1="1" y1="5" x2="13" y2="5" stroke="#3d444d"/>'
-             f'<path d="M12,2 L19,5 L12,8 z" fill="#3d444d"/></svg>one-way <span class="muted">{oneway}</span><br>')
+    rows += ('<svg width="20" height="10" class="lgs"><line x1="1" y1="5" x2="13" y2="5" stroke="#58626d"/>'
+             f'<path d="M12,2 L19,5 L12,8 z" fill="#58626d"/></svg>one-way <span class="muted">{oneway}</span><br>')
     rows += f'<span class="ll"></span>mutual <span class="muted">{mutual}</span>'
     if broken:
         rows += f'<br><span class="llb"></span>broken <span class="muted">{len(broken)}</span>'
