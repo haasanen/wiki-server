@@ -14,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from views import GRAPH_COLORS, GRAPH_FONT_W, GRAPH_LABEL_H, page_graph  # noqa: E402
+import views as views_mod  # noqa: E402
 
 W, Hh = 1000, 720  # canvas BEFORE the layout grows it (v0.4.3(6): canvas fits content)
 
@@ -128,6 +129,34 @@ def main():
         "graph page references an external resource (dependency creep)"
     assert svg.count('data-i="') == len(pts), "nodes lack drag identity"
     assert svg.count('data-f="') == len(g["edges"]), "edges lack drag rewiring data"
+    # v0.4.4 (Simo: "we want the very minimum edge overlapping"): the greedy
+    # crossing-reduction pass must be PROVEN to help on identical input — flag off vs on.
+    def _cross(page):
+        s = re.search(r'<svg[^>]*viewBox.*?</svg>', page, re.S).group(0)
+        segs = [(int(m.group(1)), int(m.group(2)), tuple(map(float, m.groups()[2:])))
+                for m in re.finditer(
+                    r'<line data-f="(\d+)" data-t="(\d+)" class="edge[^"]*"'
+                    r' x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"', s)]
+        n = 0
+        for i in range(len(segs)):
+            f1, t1, s1 = segs[i]
+            for f2, t2, s2 in segs[i + 1:]:
+                if len({f1, t1, f2, t2}) < 4:
+                    continue
+                if views_mod._segs_cross(s1[:2], s1[2:], s2[:2], s2[2:]):
+                    n += 1
+        return n
+    views_mod.GRAPH_EDGE_PASS = False
+    views_mod._LAYOUT_MEMO.clear()
+    try:
+        base_cross = _cross(page_graph(None, build()))
+    finally:
+        views_mod.GRAPH_EDGE_PASS = True
+        views_mod._LAYOUT_MEMO.clear()
+    after_cross = _cross(page_graph(None, build()))
+    assert after_cross < base_cross, \
+        f"edge-crossing pass changed nothing: {base_cross} -> {after_cross}"
+    views_mod._LAYOUT_MEMO.clear()
     src = (pathlib.Path(__file__).resolve().parents[1] / "views.py").read_text(encoding="utf-8")
     assert ".node text{fill:var(--fg);font-size:9px;pointer-events:none}" not in src, \
         "the label click-killer is back"
