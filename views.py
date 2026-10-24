@@ -322,7 +322,7 @@ table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px soli
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
 i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#3d444d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
-#gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(#gsvg){max-width:none;padding:18px 16px 40px}
+#gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(> .gwrap.full){max-width:none;padding:18px 16px 40px}.egowrap{margin:2px 0 26px}.egowrap #gsvg{height:52vh;width:auto;max-width:100%;margin:0 auto}
 .gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;line-height:2;pointer-events:none}
 .gnav button{min-width:38px;height:32px;padding:0 10px;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:15px;line-height:1;cursor:pointer}
 .gnav button:hover{border-color:var(--acc);color:var(--acc)}
@@ -420,6 +420,7 @@ def page_view(core, q):
             in_h = in_h  # broken out edges already dead-classed in body
     body = (f"<h1>{esc(title)}</h1>" + _frontmatter_chips(fm)
             + f'<p class="muted">{esc(rel)} · <a href="/page?path={urlquote(rel)}">raw</a></p>'
+            + ego_block(core, rel)
             + _fix_links(text, lm)
             + f'<div class="side"><h3>out links</h3><div>{out_h or "<span class=muted>none</span>"}</div>'
               f'<h3>backlinks</h3><div>{in_h or "<span class=muted>none</span>"}</div></div>')
@@ -958,18 +959,35 @@ def _graph_layout(nodes: list, edges: list):
     return W, Hh, pos
 
 
-def page_graph(core, g):
+def _graph_markup(g, center_path=None, wrap_class="gwrap"):
+    """Render one graph viewer (nav + floating legend + svg + JS) for graph dict g.
+    center_path (v0.4.6, Simo: every page should show its linked neighbours): when
+    given, the viewBox becomes a square centred on that node with everything else
+    still visible — the same style/tooling as the whole graph, but seen from the
+    page's perspective. Output is page-level HTML; wrap it in shell() or embed it."""
     nodes = [n for n in g["nodes"] if not n["path"].startswith("?")]
     broken = [e for e in g["edges"] if str(e[1]).startswith("?")]
     # v0.4.3 (2): the page rebuilds per request and the graph only grows — memoize the
     # deterministic layout by exact (paths, edges) content; the small cache is cleared
-    # wholesale when snapshots pile up, so memory stays bounded.
+    # wholesale when snapshots pile up, so memory stays bounded. Ego blocks raised the
+    # cap: one full graph + a handful of page neighbourhoods must not thrash it.
     mkey = (tuple(nd["path"] for nd in nodes), tuple(tuple(e) for e in g["edges"]))
     if mkey not in _LAYOUT_MEMO:
-        if len(_LAYOUT_MEMO) > 3:
+        if len(_LAYOUT_MEMO) > 8:
             _LAYOUT_MEMO.clear()
         _LAYOUT_MEMO[mkey] = _graph_layout(nodes, g["edges"])
     W, Hh, pos = _LAYOUT_MEMO[mkey]
+    if center_path and center_path in pos:
+        # ego-centred square canvas: covers every node + its label whichever side
+        cx, cy = pos[center_path]
+        reach = max(len(Path(nd["path"]).stem) for nd in nodes) * GRAPH_FONT_W + 12
+        R = reach
+        for px, py in pos.values():
+            R = max(R, abs(px - cx) + reach, abs(py - cy) + GRAPH_LABEL_H)
+        R = max(R, 150.0)
+        vx, vy, vw, vh = cx - R, cy - R, 2 * R, 2 * R
+    else:
+        vx, vy, vw, vh = 0.0, 0.0, W, Hh
     lines, circles = [], []
     # v0.4.3 (3): links are directional (a's page contains [[b]]) — one-way edges get an
     # arrowhead at the target, mutual pairs stay plain lines (Simo's spec). The line ends
@@ -997,17 +1015,17 @@ def page_graph(core, g):
         # flipped to the left of the dot instead of being sliced off by the canvas
         # (Simo's screenshot: five truncated "note-ste..." fragments + an unreadable pile).
         stem = esc(Path(nd["path"]).stem)
-        if x + 8 + len(stem) * GRAPH_FONT_W > W - 4:
+        if x + 8 + len(stem) * GRAPH_FONT_W > vx + vw - 4:
             anchor, tx = ' text-anchor="end"', -8
         else:
             anchor, tx = "", 8
         i = node_idx[nd["path"]]
-        # v0.4.4: translate() on the group + data-i so vanilla JS can drag nodes and
-        # retarget their edges client-side (no external library — the ideas are stolen,
-        # the dependency is not). Circle sits at 0,0; label offset is group-relative.
+        # v0.4.4: translate() on the group + data-i so vanilla JS can retarget edges
+        # while panning (no external library — the ideas are stolen, the dependency
+        # is not). Circle sits at 0,0; label offset is group-relative.
         circles.append(f'<g class="node" data-i="{i}" transform="translate({x:.0f},{y:.0f})"><a href="/view?path={urlquote(nd["path"])}"><circle cx="0" cy="0" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
                        f'<text{anchor} x="{tx}" y="3"><tspan>{stem}</tspan></text></a></g>')
-    svg = (f'<svg id="gsvg" viewBox="0 0 {W:.0f} {Hh:.0f}" xmlns="http://www.w3.org/2000/svg">'
+    svg = (f'<svg id="gsvg" viewBox="{vx:.0f} {vy:.0f} {vw:.0f} {vh:.0f}" xmlns="http://www.w3.org/2000/svg">'
            f'{defs}{"".join(lines)}{"".join(circles)}</svg>')
     # v0.4.3 (4): a colour legend written in words ("blue entity") is a lazy legend — it
     # shows real swatches, sourced from the same GRAPH_COLORS the dots are painted with,
@@ -1018,12 +1036,8 @@ def page_graph(core, g):
     # sentence above the graph, zero-count categories hidden, buttons in the
     # opposite corner. Everything derived from the same data that draws the dots.
     sw = lambda c: f'<i class="sw" style="background:{c}"></i>'
-    cat_of = {}
-    for nd in nodes:
-        col = _node_colour(nd["path"])
-        cat_of[nd["path"]] = col
     from collections import Counter
-    counts = Counter(cat_of[nd["path"]] for nd in nodes)
+    counts = Counter(_node_colour(nd["path"]) for nd in nodes)
     resolved = [(f_, t_) for f_, t_ in g["edges"] if f_ in pos and t_ in pos]
     oneway = sum(1 for f_, t_ in resolved if (t_, f_) not in eset)
     mutual = sum(1 for f_, t_ in resolved if (t_, f_) in eset) // 2
@@ -1039,9 +1053,41 @@ def page_graph(core, g):
     if broken:
         rows += f'<br><span class="llb"></span>broken <span class="muted">{len(broken)}</span>'
     rows += '<div class="muted" style="font-size:11px">scroll = zoom &middot; drag = pan &middot; F = fit</div>'
-    body = (f'<h1>graph</h1><div class="gwrap">{GRAPH_NAV}'
+    return (f'<div class="{wrap_class}">{GRAPH_NAV}'
             f'<div class="glegend">{rows}</div>{svg}</div>' + GRAPH_JS)
-    return shell("graph", body)
+
+
+def page_graph(core, g):
+    return shell("graph", '<h1>graph</h1>' + _graph_markup(g, wrap_class="gwrap full"))
+
+
+def ego_block(core, rel: str) -> str:
+    """v0.4.6 milestone (Simo: "when I open up one of the wiki pages, I want to see
+    linked neighbours, in the same graph style and tooling as the whole graph, but
+    from the page's perspective"): the page's 1-hop neighbourhood rendered by the
+    very same _graph_markup the /graph page uses — same layout kernel, same pan/
+    zoom/fit, same floating legend with counts — viewBox centred on THIS page."""
+    node_path = rel.rsplit(".", 1)[0]
+    try:
+        g = core.graph()
+    except Exception:
+        return ""
+    if all(n["path"] != node_path for n in g["nodes"]):
+        return ""
+    hard = [(f_, t_) for f_, t_ in g["edges"] if not str(t_).startswith("?")]
+    nbr = {node_path}
+    for f_, t_ in hard:
+        if f_ == node_path:
+            nbr.add(t_)
+        elif t_ == node_path:
+            nbr.add(f_)
+    if len(nbr) < 2:
+        return ""  # orphan page: a graph of one dot says nothing, skip the block
+    sub = {"nodes": [n for n in g["nodes"] if n["path"] in nbr],
+           "edges": [(f_, t_) for f_, t_ in hard if f_ in nbr and t_ in nbr]}
+    return ('<div class="egowrap">' + _graph_markup(sub, center_path=node_path)
+            + '<p class="muted" style="margin:6px 0 0">neighbourhood view &middot; '
+            + f'click a node to open its page &middot; <a href="/graph">whole graph</a></p></div>')
 
 
 def page_md(core, text: str, title: str) -> str:

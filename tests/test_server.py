@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -248,6 +249,27 @@ def main():
         check("home shows index links", 'href="/view?path=' in b, b[:200])
         s, b, ct, cc = get_html("/view?path=queries/q0.md")
         check("page view 200 + wikilinks resolved", s == 200 and 'href="/view?path=entities/alpha.md"' in b, b[:200])
+
+        # v0.4.6 (Simo: "when I open up one of the wiki pages, I want to see linked
+        # neighbours, in the same graph style and tooling ... from the page's
+        # perspective"): the page view embeds the ego neighbourhood, rendered by the
+        # very same _graph_markup as /graph — same nav/legend/JS — viewBox centred on
+        # the page's own node.
+        beg = b
+        check("page view embeds ego neighbourhood graph", '<svg id="gsvg"' in beg and 'class="egowrap"' in beg, beg[:120])
+        vme = re.search(r'<svg id="gsvg" viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"', beg)
+        vx, vy, vw, vh = (map(float, vme.groups()) if vme else (0, 0, 0, 0))
+        nbs = re.findall(r'<g class="node" data-i="\d+" transform="translate\(([-\d.]+),([-\d.]+)\)"><a href="/view\?path=([^"]+)"', beg)
+        egon = [n for n in nbs if n[2].startswith("queries/q0")]
+        check("ego graph shows the page + its neighbours", len(nbs) >= 3 and len(egon) == 1, str(nbs))
+        check("ego node sits dead-centre of its canvas", egon and abs(float(egon[0][0]) - (vx + vw / 2)) < 1 and abs(float(egon[0][1]) - (vy + vh / 2)) < 1, str(egon) + f" canvas=({vx + vw / 2:.0f},{vy + vh / 2:.0f})")
+        check("ego graph is dependency-free like /graph", "<script src" not in beg and 'class="glegend"' in beg and 'data-a="fit"' in beg)
+        s3, b3, _, _ = get_html("/view?path=queries/q0.md")
+        check("ego graph is deterministic", b3 == beg)
+        s4, b4, _, _ = get_html("/view?path=index.md")
+        check("index page (not a graph node) has no ego graph", '<svg id="gsvg"' not in b4, b4[:120])
+        s5, b5, _, _ = get_html("/graph")
+        check("/graph keeps the full-bleed wrapper", 'class="gwrap full"' in b5 and b5.count('<svg id="gsvg"') == 1)
         # task checkboxes + strikethrough render as glyphs, not raw [ ] / ~~
         req("POST", "/page", {"path": "queries/tasks", "content": page("tasks", "Tasks", "- [ ] todo item here\n- [x] done item here\n- ~~struck~~ text\n", ["alpha", "beta"], typ="query")})
         s, b, ct, cc = get_html("/view?path=queries/tasks.md")
