@@ -13,7 +13,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from views import GRAPH_FONT_W, GRAPH_LABEL_H, page_graph  # noqa: E402
+from views import GRAPH_COLORS, GRAPH_FONT_W, GRAPH_LABEL_H, page_graph  # noqa: E402
 
 W, Hh = 1000, 720  # canvas used by page_graph
 
@@ -101,6 +101,8 @@ def main():
           "edges": [["entities/alpha", "entities/beta"], ["entities/beta", "entities/alpha"],
                     ["entities/gamma", "entities/alpha"]]}
     dgsvg = page_graph(None, dg)
+    # scope to the graph svg itself: the legend legitimately adds its own sample line
+    dgsvg = re.search(r'<svg viewBox.*?</svg>', dgsvg, re.S).group(0)
     assert dgsvg.count("<line") == 3, "one line per edge entry"
     assert dgsvg.count('marker-end="url(#ah)"') == 1, "exactly one arrowhead (the one-way edge)"
     assert '<marker id="ah"' in dgsvg, "the arrow marker is undefined"
@@ -110,6 +112,16 @@ def main():
     assert (x1, y1) == gp["gamma"], "the arrow belongs on the one-way edge, at its source"
     assert abs(math.hypot(x2 - gp["alpha"][0], y2 - gp["alpha"][1]) - 8) <= 1, \
         "arrow tip must stop at the target dot's rim (r=6+2)"
+    # v0.4.3 (4): the legend shows real swatches — a colour legend written in prose
+    # ("blue entity") was "super lazy" (Simo). Swatch colours must equal the dot colours
+    # (single GRAPH_COLORS source), and line samples must label one-way vs mutual.
+    assert svg.count('class="sw"') == 4, "legend needs one swatch per node kind"
+    assert "blue entity" not in svg and "yellow concept" not in svg, "prose colour legend is back"
+    for c in GRAPH_COLORS.values():
+        assert f"background:{c}" in svg, f"legend swatch {c} missing"
+    used = set(re.findall(r'r="6" fill="(#[0-9a-f]{6})"><title>', svg))
+    assert used and used <= set(GRAPH_COLORS.values()), "dot colours drifted from GRAPH_COLORS"
+    assert 'class="ll"' in svg and ">one-way" in svg and ">mutual" in svg, "line samples missing"
     print(f"graph layout OK: {len(pts)} nodes spread, {border} on border, {bad}/{tot} label overlaps, "
           f"growth 200 nodes: H={Hb:.0f} bad={badb}/{totb}")
 

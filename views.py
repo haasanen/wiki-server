@@ -321,6 +321,7 @@ ul,ol{padding-left:1.4em}li{margin:.15em 0}li>p{margin:.3em 0}img{max-width:100%
 table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--chip);color:var(--fg)}.tscroll{overflow-x:auto}
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
+i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#3d444d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
 """
 
@@ -440,6 +441,14 @@ def page_search(core, q):
 
 GRAPH_FONT_W = 5.0    # ~px per glyph for the 9px sans the graph labels render in
 GRAPH_LABEL_H = 11.0  # vertical band a label occupies
+GRAPH_COLORS = {"entities": "#58a6ff", "concepts": "#d29922", "queries": "#8b949e", "other": "#3fb950"}
+
+
+def _node_colour(path: str) -> str:
+    for kind, colour in GRAPH_COLORS.items():
+        if kind != "other" and path.startswith(kind + "/"):
+            return colour
+    return GRAPH_COLORS["other"]
 
 
 _LAYOUT_MEMO: dict = {}
@@ -545,13 +554,23 @@ def page_graph(core, g):
             'markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#3d444d"/></marker></defs>')
     for nd in nodes:
         x, y = pos[nd["path"]]
-        colour = "#58a6ff" if nd["path"].startswith("entities/") else ("#d29922" if nd["path"].startswith("concepts/") else ("#8b949e" if nd["path"].startswith("queries/") else "#3fb950"))
+        colour = _node_colour(nd["path"])
         circles.append(f'<g class="node"><a href="/view?path={urlquote(nd["path"])}"><circle cx="{x:.0f}" cy="{y:.0f}" r="6" fill="{colour}"><title>{esc(nd["path"])}{esc((nd.get("title") or ""))}</title></circle>'
                        f'<text x="{x + 8:.0f}" y="{y + 3:.0f}"><tspan>{esc(Path(nd["path"]).stem)}</tspan></text></a></g>')
     svg = f'<svg viewBox="0 0 {W} {Hh}" xmlns="http://www.w3.org/2000/svg">{defs}{"".join(lines)}{"".join(circles)}</svg>'
-    body = (f'<h1>graph</h1><p class="muted">{len(nodes)} nodes · {len(g["edges"])} edges · '
-            f'blue entity · yellow concept · grey raw-note · green other · arrowhead = one-way link'
-            f'{f" · {len(broken)} broken edges (dashed red)" if broken else ""}</p>' + svg)
+    # v0.4.3 (4): a colour legend written in words ("blue entity") is a lazy legend — it
+    # shows real swatches, sourced from the same GRAPH_COLORS the dots are painted with,
+    # plus line samples for one-way (arrowed) vs mutual, so nothing can drift apart. (Simo)
+    sw = lambda c: f'<i class="sw" style="background:{c}"></i>'
+    legend = (f'{sw(GRAPH_COLORS["entities"])}entity{sw(GRAPH_COLORS["concepts"])}concept'
+              f'{sw(GRAPH_COLORS["queries"])}raw-note{sw(GRAPH_COLORS["other"])}other'
+              '<svg width="20" height="10" class="lgs"><line x1="1" y1="5" x2="13" y2="5" stroke="#3d444d"/>'
+              '<path d="M12,2 L19,5 L12,8 z" fill="#3d444d"/></svg>one-way'
+              '<span class="ll"></span>mutual')
+    if broken:
+        legend += f'<span class="llb"></span>{len(broken)} broken'
+    body = (f'<h1>graph</h1><p class="muted">{len(nodes)} nodes · {len(g["edges"])} edges'
+            f'<br>{legend}</p>' + svg)
     return shell("graph", body)
 
 
