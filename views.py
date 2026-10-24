@@ -322,8 +322,8 @@ table{border-collapse:collapse;margin:1em 0;font-size:13px}th,td{border:1px soli
 .task-list{list-style:none;padding-left:1.1em;margin:.4em 0}li.task{list-style:none;margin-left:-1.1em}.box{display:inline-block;width:.95em;height:.95em;border:2px solid #7d8590;border-radius:4px;vertical-align:-0.12em;margin-right:.45em;background:transparent}.box.done{background:#238636;border-color:#238636;position:relative}.box.done::after{content:"";position:absolute;left:.22em;top:.04em;width:.28em;height:.52em;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}del{color:var(--dim)}ul.task-list ul{list-style:disc;padding-left:1.4em;margin-left:.4em}.box.done{color:#3fb950}del{color:var(--dim)}svg{max-width:100%}
 .node circle{cursor:pointer}.node text{fill:var(--fg);font-size:9px}.node text:hover,.node:hover text{fill:var(--acc)}
 i.sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 12px;vertical-align:-1px}.ll{display:inline-block;width:18px;height:2px;background:#3d444d;margin:0 4px 0 12px;vertical-align:3px}.llb{display:inline-block;width:18px;height:0;border-top:2px dashed #f85149;margin:0 4px 0 12px;vertical-align:3px}.lgs{margin:0 4px 0 12px;vertical-align:0}
-#gsvg{touch-action:none;cursor:grab;display:block}
-.gnav{display:flex;gap:6px;justify-content:flex-end;margin:6px 0}
+#gsvg{touch-action:none;cursor:grab;display:block;width:100%}main:has(#gsvg){max-width:none;padding:18px 16px 40px}
+.gnav{position:absolute;top:10px;right:10px;z-index:5;display:flex;gap:6px;margin:0}.gwrap{position:relative}.glegend{position:absolute;top:10px;left:10px;z-index:5;background:rgba(13,17,23,.85);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;line-height:2;pointer-events:none}
 .gnav button{min-width:38px;height:32px;padding:0 10px;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-size:15px;line-height:1;cursor:pointer}
 .gnav button:hover{border-color:var(--acc);color:var(--acc)}
 .edge{stroke:#3d444d;stroke-width:1}.edge.broken{stroke:#f85149;stroke-dasharray:3 3}
@@ -463,7 +463,6 @@ GRAPH_NAV = ('<div class="gnav">'
              '<button data-a="in" title="zoom in (+)">+</button>'
              '<button data-a="out" title="zoom out (-)">&minus;</button>'
              '<button data-a="fit" title="fit graph to window (f)">fit</button>'
-             '<button data-a="reset" title="reset view (r)">&#8634;</button>'
              '</div>')
 GRAPH_JS = """<script>
 (function(){
@@ -492,8 +491,12 @@ svg.addEventListener("wheel",function(e){e.preventDefault();var p=s2v(e);
 svg.addEventListener("pointerdown",function(e){
   pts[e.pointerId]=[e.clientX,e.clientY];
   if(two()){pd=dist();drag=null;return;}
-  // viewer-only (Simo): every drag pans the view — nodes are not draggable
-  drag={x:e.clientX,y:e.clientY,v:vb.slice()};moved=false;svg.setPointerCapture(e.pointerId);});
+  // viewer-only (Simo): every drag pans the view — nodes are not draggable.
+  // Capture ONLY off-link: setPointerCapture retargets the click event to the svg
+  // in real browsers, which silently killed node navigation (Simo live report).
+  // Pressing a node link therefore skips capture so the <a> still gets its click.
+  drag={x:e.clientX,y:e.clientY,v:vb.slice()};moved=false;
+  if(!(e.target.closest&&e.target.closest("a"))){svg.setPointerCapture(e.pointerId);}});
 svg.addEventListener("pointermove",function(e){
   if(!pts[e.pointerId])return;
   if(two()){var nd=dist();
@@ -511,14 +514,13 @@ svg.addEventListener("click",function(e){if(moved){e.preventDefault();e.stopProp
 [].forEach.call(document.querySelectorAll(".gnav button"),function(b){
   b.addEventListener("click",function(){var a=b.getAttribute("data-a"),c=center();
     if(a==="in")zoomAt(c[0],c[1],0.8);else if(a==="out")zoomAt(c[0],c[1],1.25);
-    else if(a==="fit")fit();else{vb=vb0.slice();setvb();}});});
+    else if(a==="fit")fit();});});
 document.addEventListener("keydown",function(e){
   if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
   var c=center();
   if(e.key==="+"||e.key==="=")zoomAt(c[0],c[1],0.8);
   else if(e.key==="-")zoomAt(c[0],c[1],1.25);
-  else if(e.key==="f")fit();
-  else if(e.key==="r"||e.key==="0"){vb=vb0.slice();setvb();}});
+  else if(e.key==="f")fit();});
 })();
 </script>"""
 
@@ -951,8 +953,8 @@ def _graph_layout(nodes: list, edges: list):
     reach = max(8.0 + len(Path(p).stem) * GRAPH_FONT_W for p in keys) + 10.0
     sx, sy = 30.0 - min(xs), 26.0 - min(ys)
     pos = {p: (p0[0] + sx, p0[1] + sy) for p, p0 in pos.items()}
-    W = max(W, max(xs) + sx + reach)
-    Hh = max(Hh, max(ys) + sy + 34.0)
+    W = max(150.0, max(xs) + sx + reach)
+    Hh = max(120.0, max(ys) + sy + 34.0)
     return W, Hh, pos
 
 
@@ -1010,17 +1012,35 @@ def page_graph(core, g):
     # v0.4.3 (4): a colour legend written in words ("blue entity") is a lazy legend — it
     # shows real swatches, sourced from the same GRAPH_COLORS the dots are painted with,
     # plus line samples for one-way (arrowed) vs mutual, so nothing can drift apart. (Simo)
+    # v0.4.5 (Simo: the "63 nodes · 121 edges" prose strip was still lazy): proper
+    # viewer pattern — a floating legend panel OVER the canvas (pointer-events:none,
+    # never blocks panning), counts baked INTO the swatch rows instead of a
+    # sentence above the graph, zero-count categories hidden, buttons in the
+    # opposite corner. Everything derived from the same data that draws the dots.
     sw = lambda c: f'<i class="sw" style="background:{c}"></i>'
-    legend = (f'{sw(GRAPH_COLORS["entities"])}entity{sw(GRAPH_COLORS["concepts"])}concept'
-              f'{sw(GRAPH_COLORS["queries"])}raw-note{sw(GRAPH_COLORS["other"])}other'
-              '<svg width="20" height="10" class="lgs"><line x1="1" y1="5" x2="13" y2="5" stroke="#3d444d"/>'
-              '<path d="M12,2 L19,5 L12,8 z" fill="#3d444d"/></svg>one-way'
-              '<span class="ll"></span>mutual')
+    cat_of = {}
+    for nd in nodes:
+        col = _node_colour(nd["path"])
+        cat_of[nd["path"]] = col
+    from collections import Counter
+    counts = Counter(cat_of[nd["path"]] for nd in nodes)
+    resolved = [(f_, t_) for f_, t_ in g["edges"] if f_ in pos and t_ in pos]
+    oneway = sum(1 for f_, t_ in resolved if (t_, f_) not in eset)
+    mutual = sum(1 for f_, t_ in resolved if (t_, f_) in eset) // 2
+    rows = ""
+    for label, col in (("entity", GRAPH_COLORS["entities"]), ("concept", GRAPH_COLORS["concepts"]),
+                       ("raw-note", GRAPH_COLORS["queries"]), ("other", GRAPH_COLORS["other"])):
+        n = counts.get(col, 0)
+        if n:
+            rows += f'{sw(col)}{label} <span class="muted">{n}</span><br>'
+    rows += ('<svg width="20" height="10" class="lgs"><line x1="1" y1="5" x2="13" y2="5" stroke="#3d444d"/>'
+             f'<path d="M12,2 L19,5 L12,8 z" fill="#3d444d"/></svg>one-way <span class="muted">{oneway}</span><br>')
+    rows += f'<span class="ll"></span>mutual <span class="muted">{mutual}</span>'
     if broken:
-        legend += f'<span class="llb"></span>{len(broken)} broken'
-    legend += '<span class="muted" style="margin-left:12px">scroll = zoom &middot; drag = pan</span>'
-    body = (f'<h1>graph</h1><p class="muted">{len(nodes)} nodes · {len(g["edges"])} edges'
-            f'<br>{legend}</p>' + GRAPH_NAV + svg + GRAPH_JS)
+        rows += f'<br><span class="llb"></span>broken <span class="muted">{len(broken)}</span>'
+    rows += '<div class="muted" style="font-size:11px">scroll = zoom &middot; drag = pan &middot; F = fit</div>'
+    body = (f'<h1>graph</h1><div class="gwrap">{GRAPH_NAV}'
+            f'<div class="glegend">{rows}</div>{svg}</div>' + GRAPH_JS)
     return shell("graph", body)
 
 

@@ -11,6 +11,7 @@ import os
 import pathlib
 import re
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from views import GRAPH_COLORS, GRAPH_FONT_W, GRAPH_LABEL_H, page_graph  # noqa: E402
@@ -98,7 +99,18 @@ def main():
     pts = circles(svg)
     assert len(pts) == len(g["nodes"]), f"{len(pts)} circles for {len(g['nodes'])} nodes"
     Wc, Hc = canvas(svg)
-    assert Wc >= 1000 and Hc >= 720, "canvas must never be smaller than the base"
+    # v0.4.5 (Simo: "the graph does not fill the screen — the page sits in the
+    # middle"): the old contract "never smaller than 1000x720" was the bug — a
+    # canvas much bigger than its content renders the graph as a small island
+    # letterboxed by dead margin. New contract: canvas hugs content (it may now
+    # shrink as well as grow); allowed slack = one label width + 60px margin.
+    xs = [x for x, y in pts]
+    ys = [y for x, y in pts]
+    widest = max(len(Path(nd["path"]).stem) for nd in g["nodes"]) * GRAPH_FONT_W
+    assert Wc <= (max(xs) - min(xs)) + widest + 130 and \
+        Hc <= (max(ys) - min(ys)) + GRAPH_LABEL_H + 130, \
+        f"canvas {Wc:.0f}x{Hc:.0f} has dead space around content " \
+        f"{max(xs) - min(xs):.0f}x{max(ys) - min(ys):.0f}"
     border = sum(1 for x, y in pts if x <= 31 or y <= 27 or y >= Hc - 21)
     assert border / len(pts) < 0.30, f"{border}/{len(pts)} nodes pinned at a canvas edge"
     assert edge_clip(svg) == 0, "labels cross the canvas edge"
@@ -122,7 +134,7 @@ def main():
     assert svg.count('<g class="node" data-i=') == len(pts), "dots are not clickable"
     # v0.4.4 (Simo: "proper intuitive navigation controls"): buttons + inline JS, and a
     # hard zero-dependency guarantee — the graph page may reference NO external asset.
-    assert 'id="gsvg"' in svg and '<div class="gnav">' in svg and svg.count("<button") == 4, \
+    assert 'id="gsvg"' in svg and '<div class="gnav">' in svg and svg.count("<button") == 3, \
         "graph navigation controls missing"
     assert "<script>" in svg and "<script src=" not in svg, "interaction JS must be inline"
     assert "http://" not in svg.replace('xmlns="http://www.w3.org/2000/svg"', ""), \
@@ -199,10 +211,30 @@ def main():
     # v0.4.3 (4): the legend shows real swatches — a colour legend written in prose
     # ("blue entity") was "super lazy" (Simo). Swatch colours must equal the dot colours
     # (single GRAPH_COLORS source), and line samples must label one-way vs mutual.
-    assert svg.count('class="sw"') == 4, "legend needs one swatch per node kind"
+    kinds = {"entities": 0, "concepts": 0, "queries": 0, "other": 0}
+    for nd in g["nodes"]:
+        pth = nd["path"]
+        kinds["entities" if pth.startswith("entities/") else
+              "concepts" if pth.startswith("concepts/") else
+              "queries" if pth.startswith("queries/") else "other"] += 1
+    n_kinds = sum(1 for v in kinds.values() if v)
+    assert svg.count('class="sw"') == n_kinds, \
+        f"legend must show exactly the {n_kinds} non-empty node kinds"
     assert "blue entity" not in svg and "yellow concept" not in svg, "prose colour legend is back"
+    rev = {v: k for k, v in zip(("entities", "concepts", "queries", "other"),
+                                 GRAPH_COLORS.values())}
     for c in GRAPH_COLORS.values():
-        assert f"background:{c}" in svg, f"legend swatch {c} missing"
+        if kinds[rev.get(c, "other")]:
+            assert f"background:{c}" in svg, f"legend swatch {c} missing"
+    # v0.4.5 (Simo: "why is 63 nodes · 121 edges still written lazily"): counts live
+    # INSIDE the legend rows now — no prose stats strip above the graph.
+    assert not re.search(r'\d+ nodes · \d+ edges', svg), "prose stats strip is back"
+    assert re.search(r'one-way <span class="muted">\d+</span>', svg), "edge counts missing from legend"
+    assert re.search(r'mutual <span class="muted">\d+</span>', svg), "mutual count missing"
+    for kind, lab in (("entities", "entity"), ("concepts", "concept"),
+                      ("queries", "raw-note"), ("other", "other")):
+        present = f'{lab} <span class="muted">' in svg
+        assert present == (kinds[kind] > 0), f"{lab} row present={present} but count={kinds[kind]}"
     used = set(re.findall(r'r="6" fill="(#[0-9a-f]{6})"><title>', svg))
     assert used and used <= set(GRAPH_COLORS.values()), "dot colours drifted from GRAPH_COLORS"
     assert 'class="ll"' in svg and ">one-way" in svg and ">mutual" in svg, "line samples missing"
