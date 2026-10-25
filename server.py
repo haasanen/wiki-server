@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-VERSION = "0.4.9"
+VERSION = "0.4.10"
 WIKI = Path(os.environ.get("WIKI_DIR", "/wiki"))
 PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")      # graph node dirs
 try:

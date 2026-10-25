@@ -1084,7 +1084,7 @@ def _graph_markup(g, center_path=None, wrap_class="gwrap"):
     mutual = sum(1 for f_, t_ in resolved if (t_, f_) in eset) // 2
     rows = ""
     for label, col in (("entity", GRAPH_COLORS["entities"]), ("concept", GRAPH_COLORS["concepts"]),
-                       ("raw-note", GRAPH_COLORS["queries"]), ("other", GRAPH_COLORS["other"])):
+                       ("note", GRAPH_COLORS["queries"]), ("other", GRAPH_COLORS["other"])):
         n = counts.get(col, 0)
         if n:
             rows += f'{sw(col)}{label} <span class="muted">{n}</span><br>'

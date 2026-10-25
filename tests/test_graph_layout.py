@@ -232,7 +232,7 @@ def main():
     assert re.search(r'one-way <span class="muted">\d+</span>', svg), "edge counts missing from legend"
     assert re.search(r'mutual <span class="muted">\d+</span>', svg), "mutual count missing"
     for kind, lab in (("entities", "entity"), ("concepts", "concept"),
-                      ("queries", "raw-note"), ("other", "other")):
+                      ("queries", "note"), ("other", "other")):
         present = f'{lab} <span class="muted">' in svg
         assert present == (kinds[kind] > 0), f"{lab} row present={present} but count={kinds[kind]}"
     used = set(re.findall(r'r="6" fill="(#[0-9a-f]{6})"><title>', svg))
